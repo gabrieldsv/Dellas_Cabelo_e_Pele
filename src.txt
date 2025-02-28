@@ -1,0 +1,2365 @@
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\App.css
+Código:
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\App.tsx
+Código:
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider, CssBaseline } from '@mui/material';
+import { LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { ptBR } from 'date-fns/locale';
+import theme from './theme';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+
+// Pages
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import Clients from './pages/Clients';
+import Services from './pages/Services';
+import Appointments from './pages/Appointments';
+import Layout from './components/Layout';
+
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+        <AuthProvider>
+          <Router>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              
+              <Route element={<ProtectedRoute />}>
+                <Route element={<Layout />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/clients" element={<Clients />} />
+                  <Route path="/services" element={<Services />} />
+                  <Route path="/appointments" element={<Appointments />} />
+                </Route>
+              </Route>
+              
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Router>
+        </AuthProvider>
+      </LocalizationProvider>
+    </ThemeProvider>
+  );
+}
+
+export default App;
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\index.css
+Código:
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\main.tsx
+Código:
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.tsx'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\theme.ts
+Código:
+import { createTheme } from '@mui/material/styles';
+
+// Criando um tema com cores pastéis e bordas suaves
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#f8bbd0', // Rosa pastel
+      light: '#ffeeff',
+      dark: '#c48b9f',
+      contrastText: '#000000',
+    },
+    secondary: {
+      main: '#bbdefb', // Azul pastel
+      light: '#eeffff',
+      dark: '#8aacc8',
+      contrastText: '#000000',
+    },
+    background: {
+      default: '#f5f5f5',
+      paper: '#ffffff',
+    },
+    error: {
+      main: '#ef9a9a', // Vermelho pastel
+    },
+    warning: {
+      main: '#ffe0b2', // Laranja pastel
+    },
+    info: {
+      main: '#b3e5fc', // Azul claro pastel
+    },
+    success: {
+      main: '#c8e6c9', // Verde pastel
+    },
+  },
+  typography: {
+    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    h1: {
+      fontWeight: 300,
+    },
+    h2: {
+      fontWeight: 300,
+    },
+    h3: {
+      fontWeight: 400,
+    },
+    h4: {
+      fontWeight: 400,
+    },
+    h5: {
+      fontWeight: 500,
+    },
+    h6: {
+      fontWeight: 500,
+    },
+  },
+  shape: {
+    borderRadius: 12, // Bordas mais suaves
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          borderRadius: 12,
+          padding: '8px 16px',
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+          },
+        },
+        contained: {
+          boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)',
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
+          overflow: 'hidden',
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 8,
+          },
+        },
+      },
+    },
+  },
+});
+
+export default theme;
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\vite-env.d.ts
+Código:
+/// <reference types="vite/client" />
+
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\assets\react.svg
+Código:
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\components\Layout.tsx
+Código:
+import { useState } from 'react';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { 
+  AppBar, 
+  Box, 
+  Drawer, 
+  IconButton, 
+  List, 
+  ListItem, 
+  ListItemButton, 
+  ListItemIcon, 
+  ListItemText, 
+  Toolbar, 
+  Typography, 
+  Divider,
+  Avatar,
+  Menu,
+  MenuItem
+} from '@mui/material';
+import {
+  Menu as MenuIcon,
+  Dashboard as DashboardIcon,
+  People as PeopleIcon,
+  Spa as SpaIcon,
+  Event as EventIcon,
+  AccountCircle
+} from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
+
+const drawerWidth = 240;
+
+export default function Layout() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+
+  const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  const menuItems = [
+    { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+    { text: 'Clientes', icon: <PeopleIcon />, path: '/clients' },
+    { text: 'Serviços', icon: <SpaIcon />, path: '/services' },
+    { text: 'Agendamentos', icon: <EventIcon />, path: '/appointments' },
+  ];
+
+  const drawer = (
+    <div>
+      <Toolbar sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        py: 2
+      }}>
+        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
+          Dellas
+        </Typography>
+        <Typography variant="subtitle2" component="div" sx={{ ml: 1, color: 'text.secondary' }}>
+          Cabelo e Pele
+        </Typography>
+      </Toolbar>
+      <Divider />
+      <List>
+        {menuItems.map((item) => (
+          <ListItem key={item.text} disablePadding>
+            <ListItemButton 
+              selected={location.pathname === item.path}
+              onClick={() => {
+                navigate(item.path);
+                setMobileOpen(false);
+              }}
+            >
+              <ListItemIcon sx={{ 
+                color: location.pathname === item.path ? 'primary.main' : 'inherit' 
+              }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText primary={item.text} />
+            </ListItemButton>
+          </ListItem>
+        ))}
+      </List>
+    </div>
+  );
+
+  return (
+    <Box sx={{ display: 'flex' }}>
+      <AppBar
+        position="fixed"
+        sx={{
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: { sm: `${drawerWidth}px` },
+          boxShadow: 'none',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: 'background.paper',
+          color: 'text.primary'
+        }}
+      >
+        <Toolbar>
+          <IconButton
+            color="inherit"
+            aria-label="open drawer"
+            edge="start"
+            onClick={handleDrawerToggle}
+            sx={{ mr: 2, display: { sm: 'none' } }}
+          >
+            <MenuIcon />
+          </IconButton>
+          <Box sx={{ flexGrow: 1 }} />
+          <div>
+            <IconButton
+              size="large"
+              aria-label="account of current user"
+              aria-controls="menu-appbar"
+              aria-haspopup="true"
+              onClick={handleMenu}
+              color="inherit"
+            >
+              <AccountCircle />
+            </IconButton>
+            <Menu
+              id="menu-appbar"
+              anchorEl={anchorEl}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              keepMounted
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+              open={Boolean(anchorEl)}
+              onClose={handleClose}
+            >
+              <MenuItem disabled>
+                {user?.email}
+              </MenuItem>
+              <Divider />
+              <MenuItem onClick={handleLogout}>Sair</MenuItem>
+            </Menu>
+          </div>
+        </Toolbar>
+      </AppBar>
+      <Box
+        component="nav"
+        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
+      >
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{
+            keepMounted: true, // Better open performance on mobile.
+          }}
+          sx={{
+            display: { xs: 'block', sm: 'none' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+          }}
+        >
+          {drawer}
+        </Drawer>
+        <Drawer
+          variant="permanent"
+          sx={{
+            display: { xs: 'none', sm: 'block' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+          }}
+          open
+        >
+          {drawer}
+        </Drawer>
+      </Box>
+      <Box
+        component="main"
+        sx={{ 
+          flexGrow: 1, 
+          p: 3, 
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          backgroundColor: 'background.default',
+          minHeight: '100vh'
+        }}
+      >
+        <Toolbar />
+        <Outlet />
+      </Box>
+    </Box>
+  );
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\components\ProtectedRoute.tsx
+Código:
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { CircularProgress, Box } from '@mui/material';
+
+export default function ProtectedRoute() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Outlet />;
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\context\AuthContext.tsx
+Código:
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { Session, User } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
+
+type AuthContextType = {
+  session: Session | null;
+  user: User | null;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, name: string) => Promise<{ error: any }>;
+  signOut: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error };
+  };
+
+  const signUp = async (email: string, password: string, name: string) => {
+    const { error } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        data: { name }
+      }
+    });
+    
+    // Update profile with name if signup successful
+    if (!error) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('profiles').update({ name }).eq('id', user.id);
+      }
+    }
+    
+    return { error };
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const value = {
+    session,
+    user,
+    loading,
+    signIn,
+    signUp,
+    signOut
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\lib\database.types.ts
+Código:
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          email: string
+          name: string | null
+          created_at: string
+        }
+        Insert: {
+          id: string
+          email: string
+          name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          name?: string | null
+          created_at?: string
+        }
+      }
+      clients: {
+        Row: {
+          id: string
+          name: string
+          phone: string | null
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          phone?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          phone?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+      }
+      services: {
+        Row: {
+          id: string
+          name: string
+          price: number
+          duration: number
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          price: number
+          duration: number
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          price?: number
+          duration?: number
+          created_at?: string
+          created_by?: string | null
+        }
+      }
+      appointments: {
+        Row: {
+          id: string
+          client_id: string
+          start_time: string
+          end_time: string
+          status: string
+          notes: string | null
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          start_time: string
+          end_time: string
+          status?: string
+          notes?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          start_time?: string
+          end_time?: string
+          status?: string
+          notes?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+      }
+      appointment_services: {
+        Row: {
+          id: string
+          appointment_id: string
+          service_id: string
+          price: number
+        }
+        Insert: {
+          id?: string
+          appointment_id: string
+          service_id: string
+          price: number
+        }
+        Update: {
+          id?: string
+          appointment_id?: string
+          service_id?: string
+          price?: number
+        }
+      }
+    }
+  }
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\lib\supabase.ts
+Código:
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\pages\Appointments.tsx
+Código:
+import { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Button, 
+  Paper, 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableContainer, 
+  TableHead, 
+  TableRow,
+  TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  Select,
+  MenuItem,
+  Checkbox,
+  ListItemText,
+  InputLabel,
+  FormControl
+} from '@mui/material';
+import { 
+  Add as AddIcon,
+  Search as SearchIcon,
+  Edit as EditIcon
+} from '@mui/icons-material';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { DateTimePicker, DateTimePickerProps } from '@mui/x-date-pickers/DateTimePicker'; // Importando o tipo DateTimePickerProps
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { ptBR } from 'date-fns/locale';
+
+// Interfaces para os dados
+interface Appointment {
+  id: string;
+  client_id: string;
+  start_time: string;
+  services: string[];
+  created_by: string;
+}
+
+interface Client {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+interface Service {
+  id: string;
+  name: string;
+  price: number;
+  duration: number;
+}
+
+export default function Appointments() {
+  // Estados
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedService, setSelectedService] = useState('');
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
+  const [clientId, setClientId] = useState('');
+  const [appointmentServices, setAppointmentServices] = useState<string[]>([]);
+  const [appointmentDate, setAppointmentDate] = useState<Date | null>(new Date());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+
+  // Carregar dados iniciais
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [appointmentsData, clientsData, servicesData] = await Promise.all([
+        supabase.from('appointments').select('*'),
+        supabase.from('clients').select('*'),
+        supabase.from('services').select('*')
+      ]);
+
+      if (appointmentsData.error) throw appointmentsData.error;
+      if (clientsData.error) throw clientsData.error;
+      if (servicesData.error) throw servicesData.error;
+
+      setAppointments(appointmentsData.data || []);
+      setFilteredAppointments(appointmentsData.data || []);
+      setClients(clientsData.data || []);
+      setServices(servicesData.data || []);
+    } catch (error) {
+      setError('Erro ao carregar dados');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Função de filtragem
+  const handleFilter = () => {
+    let filtered = [...appointments];
+    if (searchTerm) {
+      filtered = filtered.filter(appointment => 
+        clients.find(client => client.id === appointment.client_id)?.name
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())
+      );
+    }
+    if (selectedService) {
+      filtered = filtered.filter(appointment => 
+        appointment.services.includes(selectedService)
+      );
+    }
+    if (selectedDate) {
+      filtered = filtered.filter(appointment => 
+        new Date(appointment.start_time).toDateString() === selectedDate.toDateString()
+      );
+    }
+    setFilteredAppointments(filtered);
+  };
+
+  useEffect(() => {
+    handleFilter();
+  }, [searchTerm, selectedService, selectedDate, appointments]);
+
+  // Abrir/fechar modal
+  const handleOpenDialog = (appointment?: Appointment) => {
+    if (appointment) {
+      setCurrentAppointment(appointment);
+      setClientId(appointment.client_id);
+      setAppointmentServices(appointment.services);
+      setAppointmentDate(new Date(appointment.start_time));
+    } else {
+      setCurrentAppointment(null);
+      setClientId('');
+      setAppointmentServices([]);
+      setAppointmentDate(new Date());
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+  };
+
+  // Salvar agendamento
+  const handleSaveAppointment = async () => {
+    if (!clientId || appointmentServices.length === 0 || !appointmentDate) {
+      setError('Todos os campos são obrigatórios');
+      return;
+    }
+
+    try {
+      if (currentAppointment) {
+        // Atualizar agendamento existente
+        const { error } = await supabase
+          .from('appointments')
+          .update({ 
+            client_id: clientId, 
+            services: appointmentServices, 
+            start_time: appointmentDate.toISOString() 
+          })
+          .eq('id', currentAppointment.id);
+        if (error) throw error;
+      } else {
+        // Criar novo agendamento
+        const { error } = await supabase
+          .from('appointments')
+          .insert([{ 
+            client_id: clientId, 
+            services: appointmentServices, 
+            start_time: appointmentDate.toISOString(), 
+            created_by: user?.id 
+          }]);
+        if (error) throw error;
+      }
+      handleCloseDialog();
+      fetchData();
+    } catch (error) {
+      setError('Erro ao salvar agendamento');
+      console.error(error);
+    }
+  };
+
+  // Estado de carregamento
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      {/* Cabeçalho */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>
+          Agendamentos
+        </Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+        >
+          Novo Agendamento
+        </Button>
+      </Box>
+      
+      {/* Filtros */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Buscar por nome do cliente..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Serviço</InputLabel>
+          <Select
+            value={selectedService}
+            onChange={(e) => setSelectedService(e.target.value)}
+            label="Serviço"
+          >
+            <MenuItem value="">Todos</MenuItem>
+            {services.map(service => (
+              <MenuItem key={service.id} value={service.id}>{service.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+          <DateTimePicker<Date>
+            label="Data"
+            value={selectedDate}
+            onChange={(newValue) => setSelectedDate(newValue)}
+            renderInput={(params) => <TextField {...params} fullWidth sx={{ mt: 2 }} />}
+          />
+        </LocalizationProvider>
+      </Paper>
+      
+      {/* Tabela de agendamentos */}
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Cliente</TableCell>
+              <TableCell>Serviços</TableCell>
+              <TableCell>Data</TableCell>
+              <TableCell align="right">Ações</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredAppointments.map((appointment) => (
+              <TableRow key={appointment.id}>
+                <TableCell>{clients.find(client => client.id === appointment.client_id)?.name || 'Desconhecido'}</TableCell>
+                <TableCell>
+                  {appointment.services.map(serviceId => 
+                    services.find(service => service.id === serviceId)?.name
+                  ).join(', ')}
+                </TableCell>
+                <TableCell>{new Date(appointment.start_time).toLocaleString('pt-BR')}</TableCell>
+                <TableCell align="right">
+                  <IconButton 
+                    color="primary" 
+                    onClick={() => handleOpenDialog(appointment)}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      
+      {/* Modal de agendamento */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{currentAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Cliente</InputLabel>
+            <Select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              label="Cliente"
+            >
+              {clients.map(client => (
+                <MenuItem key={client.id} value={client.id}>{client.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Serviços</InputLabel>
+            <Select
+              multiple
+              value={appointmentServices}
+              onChange={(e) => setAppointmentServices(e.target.value as string[])}
+              renderValue={(selected) => 
+                selected.map(id => services.find(service => service.id === id)?.name).join(', ')
+              }
+              label="Serviços"
+            >
+              {services.map(service => (
+                <MenuItem key={service.id} value={service.id}>
+                  <Checkbox checked={appointmentServices.includes(service.id)} />
+                  <ListItemText primary={service.name} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+            <DateTimePicker<Date>
+              label="Data e Hora"
+              value={appointmentDate}
+              onChange={(newValue) => setAppointmentDate(newValue)}
+              renderInput={(params) => <TextField {...params} fullWidth sx={{ mt: 2 }} />}
+            />
+          </LocalizationProvider>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancelar</Button>
+          <Button onClick={handleSaveAppointment} variant="contained">Salvar</Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Notificação de erro */}
+      <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError('')}>
+        <Alert onClose={() => setError('')} severity="error">{error}</Alert>
+      </Snackbar>
+    </Box>
+  );
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\pages\Clients.tsx
+Código:
+import { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Button, 
+  Paper, 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableContainer, 
+  TableHead, 
+  TableRow,
+  TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  CircularProgress,
+  Snackbar,
+  Alert
+} from '@mui/material';
+import { 
+  Add as AddIcon,
+  Search as SearchIcon,
+  Edit as EditIcon,
+  Phone as PhoneIcon
+} from '@mui/icons-material';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+
+interface Client {
+  id: string;
+  name: string;
+  phone: string;
+  created_at: string;
+}
+
+export default function Clients() {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const fetchClients = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('name', { ascending: true });
+      
+      if (error) throw error;
+      setClients(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar clientes:', error);
+      showSnackbar('Erro ao carregar clientes', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenDialog = (client?: Client) => {
+    if (client) {
+      setEditingClient(client);
+      setName(client.name);
+      setPhone(client.phone || '');
+    } else {
+      setEditingClient(null);
+      setName('');
+      setPhone('');
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+  };
+
+  const handleSaveClient = async () => {
+    if (!name) {
+      showSnackbar('Nome é obrigatório', 'error');
+      return;
+    }
+
+    try {
+      if (editingClient) {
+        // Atualizar cliente existente
+        const { error } = await supabase
+          .from('clients')
+          .update({ name, phone })
+          .eq('id', editingClient.id);
+        
+        if (error) throw error;
+        showSnackbar('Cliente atualizado com sucesso', 'success');
+      } else {
+        // Criar novo cliente
+        const { error } = await supabase
+          .from('clients')
+          .insert([{ name, phone, created_by: user?.id }]);
+        
+        if (error) throw error;
+        showSnackbar('Cliente criado com sucesso', 'success');
+      }
+      
+      handleCloseDialog();
+      fetchClients();
+    } catch (error) {
+      console.error('Erro ao salvar cliente:', error);
+      showSnackbar('Erro ao salvar cliente', 'error');
+    }
+  };
+
+  const showSnackbar = (message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  const filteredClients = clients.filter(client => 
+    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (client.phone && client.phone.includes(searchTerm))
+  );
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>
+          Clientes
+        </Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+        >
+          Novo Cliente
+        </Button>
+      </Box>
+      
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Buscar por nome ou telefone..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+      
+      <TableContainer component={Paper}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Nome</TableCell>
+                <TableCell>Telefone</TableCell>
+                <TableCell align="right">Ações</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredClients.length > 0 ? (
+                filteredClients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell>{client.name}</TableCell>
+                    <TableCell>
+                      {client.phone ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <PhoneIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
+                          {client.phone}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Não informado
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton 
+                        color="primary" 
+                        onClick={() => handleOpenDialog(client)}
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={3} align="center">
+                    {searchTerm ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </TableContainer>
+      
+      {/* Dialog para criar/editar cliente */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingClient ? 'Editar Cliente' : 'Novo Cliente'}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Nome"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Telefone"
+            type="tel"
+            fullWidth
+            variant="outlined"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(00) 00000-0000"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancelar</Button>
+          <Button onClick={handleSaveClient} variant="contained">
+            Salvar
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Snackbar para feedback */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\pages\Dashboard.tsx
+Código:
+import { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Grid, 
+  Paper, 
+  Typography, 
+  Card, 
+  CardContent,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  CircularProgress
+} from '@mui/material';
+import { 
+  PeopleOutlined as PeopleIcon, 
+  SpaOutlined as SpaIcon, 
+  EventOutlined as EventIcon,
+  AttachMoneyOutlined as MoneyIcon
+} from '@mui/icons-material';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { supabase } from '../lib/supabase';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
+
+// Cores para o gráfico de pizza
+const COLORS = ['#f8bbd0', '#bbdefb', '#c8e6c9', '#ffe0b2', '#e1bee7', '#b3e5fc'];
+
+export default function Dashboard() {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    clientCount: 0,
+    serviceCount: 0,
+    appointmentCount: 0,
+    revenue: 0
+  });
+  const [upcomingAppointments, setUpcomingAppointments] = useState<any[]>([]);
+  const [serviceStats, setServiceStats] = useState<any[]>([]);
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        
+        // Buscar contagem de clientes
+        const { count: clientCount } = await supabase
+          .from('clients')
+          .select('*', { count: 'exact', head: true });
+        
+        // Buscar contagem de serviços
+        const { count: serviceCount } = await supabase
+          .from('services')
+          .select('*', { count: 'exact', head: true });
+        
+        // Buscar contagem de agendamentos
+        const { count: appointmentCount } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true });
+        
+        // Buscar próximos agendamentos
+        const today = new Date();
+        const { data: appointments } = await supabase
+          .from('appointments')
+          .select(`
+            id,
+            start_time,
+            clients (
+              name
+            ),
+            appointment_services (
+              services (
+                name
+              )
+            )
+          `)
+          .gte('start_time', today.toISOString())
+          .order('start_time', { ascending: true })
+          .limit(5);
+        
+        // Calcular receita total (simplificado)
+        const { data: appointmentServices } = await supabase
+          .from('appointment_services')
+          .select('price');
+        
+        const revenue = appointmentServices?.reduce((sum, item) => sum + (item.price || 0), 0) || 0;
+        
+        // Estatísticas de serviços mais populares
+        const { data: serviceData } = await supabase
+          .from('appointment_services')
+          .select(`
+            service_id,
+            services (
+              name
+            )
+          `);
+        
+        const serviceMap = new Map();
+        serviceData?.forEach(item => {
+          const serviceName = item.services?.name || 'Desconhecido';
+          serviceMap.set(serviceName, (serviceMap.get(serviceName) || 0) + 1);
+        });
+        
+        const serviceStatsData = Array.from(serviceMap.entries()).map(([name, value]) => ({
+          name,
+          value
+        })).sort((a, b) => (b.value as number) - (a.value as number)).slice(0, 5);
+        
+        // Dados mensais para o gráfico de barras
+        const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const currentYear = today.getFullYear();
+        
+        // Simulando dados mensais (em um sistema real, isso viria do banco de dados)
+        const monthlyDataSimulated = months.map((month, index) => ({
+          name: month,
+          Agendamentos: Math.floor(Math.random() * 50) + 10,
+          Receita: Math.floor(Math.random() * 5000) + 1000
+        }));
+        
+        setStats({
+          clientCount: clientCount || 0,
+          serviceCount: serviceCount || 0,
+          appointmentCount: appointmentCount || 0,
+          revenue
+        });
+        
+        setUpcomingAppointments(appointments || []);
+        setServiceStats(serviceStatsData);
+        setMonthlyData(monthlyDataSimulated);
+      } catch (error) {
+        console.error('Erro ao buscar dados do dashboard:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Typography variant="h4" sx={{ mb: 4, fontWeight: 'medium' }}>
+        Dashboard
+      </Typography>
+      
+      {/* Cards de estatísticas */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <PeopleIcon sx={{ fontSize: 40, color: 'primary.main', mr: 2 }} />
+              <Box>
+                <Typography variant="h4" component="div">
+                  {stats.clientCount}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Clientes
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <SpaIcon sx={{ fontSize: 40, color: 'secondary.main', mr: 2 }} />
+              <Box>
+                <Typography variant="h4" component="div">
+                  {stats.serviceCount}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Serviços
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <EventIcon sx={{ fontSize: 40, color: 'info.main', mr: 2 }} />
+              <Box>
+                <Typography variant="h4" component="div">
+                  {stats.appointmentCount}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Agendamentos
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <MoneyIcon sx={{ fontSize: 40, color: 'success.main', mr: 2 }} />
+              <Box>
+                <Typography variant="h4" component="div">
+                  R$ {stats.revenue.toLocaleString('pt-BR')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Receita Total
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+      
+      {/* Gráficos e listas */}
+      <Grid container spacing={3}>
+        {/* Gráfico de barras - Agendamentos por mês */}
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Agendamentos por Mês
+            </Typography>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={monthlyData}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="Agendamentos" fill="#f8bbd0" />
+              </BarChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+        
+        {/* Gráfico de pizza - Serviços mais populares */}
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Serviços Mais Populares
+            </Typography>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={serviceStats}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {serviceStats.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+        
+        {/* Próximos agendamentos */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Próximos Agendamentos
+            </Typography>
+            {upcomingAppointments.length > 0 ? (
+              <List>
+                {upcomingAppointments.map((appointment, index) => (
+                  <Box key={appointment.id}>
+                    <ListItem>
+                      <ListItemText
+                        primary={appointment.clients?.name}
+                        secondary={
+                          <>
+                            <Typography component="span" variant="body2" color="text.primary">
+                              {format(new Date(appointment.start_time), "dd 'de' MMMM', às' HH:mm", { locale: ptBR })}
+                            </Typography>
+                            <Typography component="span" variant="body2" display="block">
+                              Serviços: {appointment.appointment_services.map((as: any) => as.services.name).join(', ')}
+                            </Typography>
+                          </>
+                        }
+                      />
+                    </ListItem>
+                    {index < upcomingAppointments.length - 1 && <Divider />}
+                  </Box>
+                ))}
+              </List>
+            ) : (
+              <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                Não há agendamentos próximos.
+              </Typography>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\pages\Login.tsx
+Código:
+import { useState } from 'react';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { 
+  Avatar, 
+  Button, 
+  TextField, 
+  Link, 
+  Grid, 
+  Box, 
+  Typography, 
+  Container, 
+  Paper,
+  Alert
+} from '@mui/material';
+import { LockOutlined as LockOutlinedIcon } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
+
+export default function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    
+    if (!email || !password) {
+      setError('Por favor, preencha todos os campos');
+      return;
+    }
+    
+    try {
+      setError('');
+      setLoading(true);
+      const { error } = await signIn(email, password);
+      
+      if (error) {
+        setError('Email ou senha incorretos');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setError('Falha ao fazer login. Tente novamente.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Container component="main" maxWidth="xs" sx={{ 
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: 4, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center',
+          borderRadius: 2
+        }}
+      >
+        <Avatar sx={{ m: 1, bgcolor: 'primary.main' }}>
+          <LockOutlinedIcon />
+        </Avatar>
+        <Typography component="h1" variant="h5" sx={{ mb: 3 }}>
+          Dellas - Cabelo e Pele
+        </Typography>
+        
+        {error && <Alert severity="error" sx={{ width: '100%', mb: 2 }}>{error}</Alert>}
+        
+        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="email"
+            label="Email"
+            name="email"
+            autoComplete="email"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Senha"
+            type="password"
+            id="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            sx={{ mt: 3, mb: 2 }}
+            disabled={loading}
+          >
+            {loading ? 'Entrando...' : 'Entrar'}
+          </Button>
+          <Grid container justifyContent="flex-end">
+            <Grid item>
+              <Link component={RouterLink} to="/register" variant="body2">
+                Não tem uma conta? Cadastre-se
+              </Link>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Container>
+  );
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\pages\Register.tsx
+Código:
+import { useState } from 'react';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { 
+  Avatar, 
+  Button, 
+  TextField, 
+  Link, 
+  Grid, 
+  Box, 
+  Typography, 
+  Container, 
+  Paper,
+  Alert
+} from '@mui/material';
+import { LockOutlined as LockOutlinedIcon } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
+
+export default function Register() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { signUp } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    
+    if (!name || !email || !password || !confirmPassword) {
+      setError('Por favor, preencha todos os campos');
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem');
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+    
+    try {
+      setError('');
+      setLoading(true);
+      const { error } = await signUp(email, password, name);
+      
+      if (error) {
+        if (error.message.includes('email')) {
+          setError('Este email já está em uso');
+        } else {
+          setError(error.message);
+        }
+      } else {
+        navigate('/login');
+      }
+    } catch (err) {
+      setError('Falha ao criar conta. Tente novamente.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Container component="main" maxWidth="xs" sx={{ 
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: 4, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center',
+          borderRadius: 2
+        }}
+      >
+        <Avatar sx={{ m: 1, bgcolor: 'primary.main' }}>
+          <LockOutlinedIcon />
+        </Avatar>
+        <Typography component="h1" variant="h5" sx={{ mb: 3 }}>
+          Criar Conta
+        </Typography>
+        
+        {error && <Alert severity="error" sx={{ width: '100%', mb: 2 }}>{error}</Alert>}
+        
+        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="name"
+            label="Nome Completo"
+            name="name"
+            autoComplete="name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="email"
+            label="Email"
+            name="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Senha"
+            type="password"
+            id="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="confirmPassword"
+            label="Confirmar Senha"
+            type="password"
+            id="confirmPassword"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            sx={{ mt: 3, mb: 2 }}
+            disabled={loading}
+          >
+            {loading ? 'Cadastrando...' : 'Cadastrar'}
+          </Button>
+          <Grid container justifyContent="flex-end">
+            <Grid item>
+              <Link component={RouterLink} to="/login" variant="body2">
+                Já tem uma conta? Faça login
+              </Link>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Container>
+  );
+}
+==================================================
+D:/Users/pmrv0839/Documents/project-bolt-vitejs-vite-zkufrref/project/src\pages\Services.tsx
+Código:
+import { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Button, 
+  Paper, 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableContainer, 
+  TableHead, 
+  TableRow,
+  TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  InputLabel,
+  FormControl,
+  OutlinedInput
+} from '@mui/material';
+import { 
+  Add as AddIcon,
+  Search as SearchIcon,
+  Edit as EditIcon,
+  AccessTime as TimeIcon,
+  AttachMoney as MoneyIcon
+} from '@mui/icons-material';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+
+interface Service {
+  id: string;
+  name: string;
+  price: number;
+  duration: number;
+  created_at: string;
+}
+
+export default function Services() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [duration, setDuration] = useState('60');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
+  const fetchServices = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .order('name', { ascending: true });
+      
+      if (error) throw error;
+      setServices(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar serviços:', error);
+      showSnackbar('Erro ao carregar serviços', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenDialog = (service?: Service) => {
+    if (service) {
+      setEditingService(service);
+      setName(service.name);
+      setPrice(service.price.toString());
+      setDuration(service.duration.toString());
+    } else {
+      setEditingService(null);
+      setName('');
+      setPrice('');
+      setDuration('60');
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+  };
+
+  const handleSaveService = async () => {
+    if (!name) {
+      showSnackbar('Nome é obrigatório', 'error');
+      return;
+    }
+
+    if (!price || isNaN(Number(price)) || Number(price) < 0) {
+      showSnackbar('Preço inválido', 'error');
+      return;
+    }
+
+    if (!duration || isNaN(Number(duration)) || Number(duration) <= 0) {
+      showSnackbar('Duração inválida', 'error');
+      return;
+    }
+
+    try {
+      const priceValue = Number(price);
+      const durationValue = Number(duration);
+
+      if (editingService) {
+        // Atualizar serviço existente
+        const { error } = await supabase
+          .from('services')
+          .update({ name, price: priceValue, duration: durationValue })
+          .eq('id', editingService.id);
+        
+        if (error) throw error;
+        showSnackbar('Serviço atualizado com sucesso', 'success');
+      } else {
+        // Criar novo serviço
+        const { error } = await supabase
+          .from('services')
+          .insert([{ 
+            name, 
+            price: priceValue, 
+            duration: durationValue,
+            created_by: user?.id 
+          }]);
+        
+        if (error) throw error;
+        showSnackbar('Serviço criado com sucesso', 'success');
+      }
+      
+      handleCloseDialog();
+      fetchServices();
+    } catch (error) {
+      console.error('Erro ao salvar serviço:', error);
+      showSnackbar('Erro ao salvar serviço', 'error');
+    }
+  };
+
+  const showSnackbar = (message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  const filteredServices = services.filter(service => 
+    service.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    });
+  };
+
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) {
+      return `${minutes} min`;
+    } else {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      if (remainingMinutes === 0) {
+        return hours === 1 ? `1 hora` : `${hours} horas`;
+      } else {
+        return hours === 1 
+          ? `1 hora e ${remainingMinutes} min` 
+          : `${hours} horas e ${remainingMinutes} min`;
+      }
+    }
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>
+          Serviços
+        </Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+        >
+          Novo Serviço
+        </Button>
+      </Box>
+      
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Buscar por nome do serviço..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+      
+      <TableContainer component={Paper}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Nome</TableCell>
+                <TableCell>Preço</TableCell>
+                <TableCell>Duração</TableCell>
+                <TableCell align="right">Ações</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredServices.length > 0 ? (
+                filteredServices.map((service) => (
+                  <TableRow key={service.id}>
+                    <TableCell>{service.name}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <MoneyIcon fontSize="small" sx={{ mr: 1, color: 'success.main' }} />
+                        {formatCurrency(service.price)}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <TimeIcon fontSize="small" sx={{ mr: 1, color: 'info.main' }} />
+                        {formatDuration(service.duration)}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton 
+                        color="primary" 
+                        onClick={() => handleOpenDialog(service)}
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} align="center">
+                    {searchTerm ? 'Nenhum serviço encontrado' : 'Nenhum serviço cadastrado'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </TableContainer>
+      
+      {/* Dialog para criar/editar serviço */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingService ? 'Editar Serviço' : 'Novo Serviço'}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Nome do Serviço"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            sx={{ mb: 2 }}
+          />
+          
+          <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+            <InputLabel htmlFor="price-input">Preço</InputLabel>
+            <OutlinedInput
+              id="price-input"
+              value={price}
+              onChange={(e) => {
+                // Permitir apenas números e ponto/vírgula
+                const value = e.target.value.replace(/[^0-9.,]/g, '');
+                // Substituir vírgula por ponto
+                setPrice(value.replace(',', '.'));
+              }}
+              startAdornment={<InputAdornment position="start">R$</InputAdornment>}
+              label="Preço"
+              placeholder="0.00"
+            />
+          </FormControl>
+          
+          <TextField
+            margin="dense"
+            label="Duração (minutos)"
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">min</InputAdornment>,
+            }}
+            inputProps={{ min: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancelar</Button>
+          <Button onClick={handleSaveService} variant="contained">
+            Salvar
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Snackbar para feedback */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+}
+==================================================

@@ -1,0 +1,694 @@
+/home/gabriel/Área de trabalho/project/supabase/migrations/20250227222319_amber_palace.sql
+Código:
+/*
+  # Add categories, sales, and financial management
+
+  1. New Features
+    - Add category field to inventory items
+    - Create sales system for products
+    - Add financial management capabilities
+    - Create triggers for financial transactions
+
+  2. New Tables
+    - `sales` - For tracking product sales
+    - `sale_items` - For tracking individual items in a sale
+    - `financial_transactions` - For financial management
+
+  3. Security
+    - Enable RLS on all new tables
+    - Add policies for authenticated users
+*/
+
+-- Add category to inventory table
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS category text DEFAULT 'Geral';
+
+-- Create sales table for product sales
+CREATE TABLE IF NOT EXISTS sales (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_date timestamptz NOT NULL DEFAULT now(),
+  total_amount numeric NOT NULL DEFAULT 0,
+  payment_method text,
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Create sale_items table to track individual items in a sale
+CREATE TABLE IF NOT EXISTS sale_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_id uuid REFERENCES sales(id) ON DELETE CASCADE NOT NULL,
+  inventory_id uuid REFERENCES inventory(id) NOT NULL,
+  quantity integer NOT NULL DEFAULT 1,
+  unit_price numeric NOT NULL DEFAULT 0,
+  total_price numeric NOT NULL DEFAULT 0
+);
+
+-- Create financial_transactions table for financial management
+CREATE TABLE IF NOT EXISTS financial_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_date timestamptz NOT NULL DEFAULT now(),
+  description text NOT NULL,
+  amount numeric NOT NULL,
+  type text NOT NULL, -- 'income' or 'expense'
+  category text,
+  related_sale_id uuid REFERENCES sales(id),
+  related_appointment_id uuid REFERENCES appointments(id),
+  payment_method text,
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Enable Row Level Security for new tables
+ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE financial_transactions ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for sales
+CREATE POLICY "Staff can view all sales"
+  ON sales FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert sales"
+  ON sales FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update sales"
+  ON sales FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Create policies for sale_items
+CREATE POLICY "Staff can view all sale_items"
+  ON sale_items FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert sale_items"
+  ON sale_items FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update sale_items"
+  ON sale_items FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Create policies for financial_transactions
+CREATE POLICY "Staff can view all financial_transactions"
+  ON financial_transactions FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert financial_transactions"
+  ON financial_transactions FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update financial_transactions"
+  ON financial_transactions FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Create trigger to automatically create financial transactions when sales are made
+CREATE OR REPLACE FUNCTION public.handle_new_sale()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.financial_transactions (
+    transaction_date,
+    description,
+    amount,
+    type,
+    category,
+    related_sale_id,
+    payment_method
+  )
+  VALUES (
+    new.sale_date,
+    'Venda de produtos',
+    new.total_amount,
+    'income',
+    'Vendas',
+    new.id,
+    new.payment_method
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER on_sale_created
+  AFTER INSERT ON sales
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_sale();
+
+-- Create trigger to automatically create financial transactions when appointments are completed
+CREATE OR REPLACE FUNCTION public.handle_completed_appointment()
+RETURNS trigger AS $$
+BEGIN
+  IF new.status = 'completed' AND (old.status IS NULL OR old.status <> 'completed') THEN
+    INSERT INTO public.financial_transactions (
+      transaction_date,
+      description,
+      amount,
+      type,
+      category,
+      related_appointment_id
+    )
+    VALUES (
+      new.start_time,
+      'Serviço realizado',
+      new.final_price,
+      'income',
+      'Serviços',
+      new.id
+    );
+  END IF;
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER on_appointment_completed
+  AFTER UPDATE ON appointments
+  FOR EACH ROW EXECUTE FUNCTION public.handle_completed_appointment();
+==================================================
+/home/gabriel/Área de trabalho/project/supabase/migrations/20250227162339_crimson_villa.sql
+Código:
+/*
+  # Initial Schema for Dellas Salon System
+
+  1. New Tables
+    - `profiles` - Staff member profiles
+      - `id` (uuid, primary key)
+      - `email` (text, unique)
+      - `name` (text)
+      - `created_at` (timestamp)
+    
+    - `clients` - Salon clients
+      - `id` (uuid, primary key)
+      - `name` (text)
+      - `phone` (text)
+      - `created_at` (timestamp)
+      - `created_by` (uuid, references profiles.id)
+    
+    - `services` - Available salon services
+      - `id` (uuid, primary key)
+      - `name` (text)
+      - `price` (numeric)
+      - `duration` (integer) - in minutes
+      - `created_at` (timestamp)
+      - `created_by` (uuid, references profiles.id)
+    
+    - `appointments` - Client appointments
+      - `id` (uuid, primary key)
+      - `client_id` (uuid, references clients.id)
+      - `start_time` (timestamp)
+      - `end_time` (timestamp)
+      - `status` (text) - 'scheduled', 'completed', 'cancelled'
+      - `notes` (text)
+      - `created_at` (timestamp)
+      - `created_by` (uuid, references profiles.id)
+    
+    - `appointment_services` - Services included in appointments
+      - `id` (uuid, primary key)
+      - `appointment_id` (uuid, references appointments.id)
+      - `service_id` (uuid, references services.id)
+      - `price` (numeric) - price at time of booking
+  
+  2. Security
+    - Enable RLS on all tables
+    - Add policies for authenticated users
+*/
+
+-- Create profiles table (for staff members)
+CREATE TABLE IF NOT EXISTS profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
+  email text UNIQUE NOT NULL,
+  name text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Create clients table
+CREATE TABLE IF NOT EXISTS clients (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  phone text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Create services table
+CREATE TABLE IF NOT EXISTS services (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  price numeric NOT NULL DEFAULT 0,
+  duration integer NOT NULL DEFAULT 60,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Create appointments table
+CREATE TABLE IF NOT EXISTS appointments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id uuid REFERENCES clients(id) NOT NULL,
+  start_time timestamptz NOT NULL,
+  end_time timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'scheduled',
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Create appointment_services junction table
+CREATE TABLE IF NOT EXISTS appointment_services (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  appointment_id uuid REFERENCES appointments(id) ON DELETE CASCADE NOT NULL,
+  service_id uuid REFERENCES services(id) NOT NULL,
+  price numeric NOT NULL
+);
+
+-- Enable Row Level Security
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointment_services ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+-- Profiles policies
+CREATE POLICY "Users can view their own profile"
+  ON profiles FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+  ON profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+-- Clients policies
+CREATE POLICY "Staff can view all clients"
+  ON clients FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert clients"
+  ON clients FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update clients"
+  ON clients FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Services policies
+CREATE POLICY "Staff can view all services"
+  ON services FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert services"
+  ON services FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update services"
+  ON services FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Appointments policies
+CREATE POLICY "Staff can view all appointments"
+  ON appointments FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert appointments"
+  ON appointments FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update appointments"
+  ON appointments FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Appointment services policies
+CREATE POLICY "Staff can view all appointment services"
+  ON appointment_services FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert appointment services"
+  ON appointment_services FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update appointment services"
+  ON appointment_services FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Create trigger to create profile after user signs up
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email)
+  VALUES (new.id, new.email);
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+==================================================
+/home/gabriel/Área de trabalho/project/supabase/migrations/20250227215733_round_shore.sql
+Código:
+/*
+  # Schema update for salon system enhancements
+  
+  1. New Tables
+    - `inventory` - For managing salon products/merchandise
+      - `id` (uuid, primary key)
+      - `name` (text, product name)
+      - `quantity` (integer, current stock)
+      - `cost_price` (numeric, purchase price)
+      - `selling_price` (numeric, retail price)
+      - `created_at` (timestamp)
+      - `created_by` (uuid, references profiles)
+  
+  2. Changes
+    - Update `appointments` table:
+      - Add `status` column with options ('scheduled', 'completed', 'cancelled')
+      - Add `final_price` column to store the actual price after service completion
+    - Update `appointment_services` table:
+      - Add `final_price` column to store the actual price of each service
+  
+  3. Security
+    - Enable RLS on new tables
+    - Add policies for authenticated users
+*/
+
+-- Create inventory table for merchandise management
+CREATE TABLE IF NOT EXISTS inventory (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  quantity integer NOT NULL DEFAULT 0,
+  cost_price numeric NOT NULL DEFAULT 0,
+  selling_price numeric NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Add final_price to appointments table if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'appointments' AND column_name = 'final_price'
+  ) THEN
+    ALTER TABLE appointments ADD COLUMN final_price numeric DEFAULT 0;
+  END IF;
+END $$;
+
+-- Add final_price to appointment_services table if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'appointment_services' AND column_name = 'final_price'
+  ) THEN
+    ALTER TABLE appointment_services ADD COLUMN final_price numeric DEFAULT 0;
+  END IF;
+END $$;
+
+-- Enable Row Level Security for inventory
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for inventory
+CREATE POLICY "Staff can view all inventory"
+  ON inventory FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Staff can insert inventory"
+  ON inventory FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Staff can update inventory"
+  ON inventory FOR UPDATE
+  TO authenticated
+  USING (true);
+==================================================
+/home/gabriel/Área de trabalho/project/supabase/migrations/20250227232521_twilight_canyon.sql
+Código:
+/*
+  # Add client_id to sales table
+
+  1. Changes
+    - Add client_id column to sales table to track which client made the purchase
+    - Add foreign key constraint to clients table
+*/
+
+-- Add client_id column to sales table if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'sales' AND column_name = 'client_id'
+  ) THEN
+    ALTER TABLE sales ADD COLUMN client_id uuid REFERENCES clients(id);
+  END IF;
+END $$;
+==================================================
+/home/gabriel/Área de trabalho/project/supabase/migrations/20250227223035_silent_meadow.sql
+Código:
+/*
+  # Add product categories, sales, and financial management
+
+  1. New Features
+    - Add category field to inventory items
+    - Create sales system for product sales
+    - Create financial transactions system
+    - Add automatic transaction creation for sales and completed appointments
+
+  2. Tables
+    - Modified: inventory (added category column)
+    - New: sales, sale_items, financial_transactions
+
+  3. Security
+    - Enable RLS on all new tables
+    - Add policies for authenticated users
+*/
+
+-- Add category to inventory table
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS category text DEFAULT 'Geral';
+
+-- Create sales table for product sales
+CREATE TABLE IF NOT EXISTS sales (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_date timestamptz NOT NULL DEFAULT now(),
+  total_amount numeric NOT NULL DEFAULT 0,
+  payment_method text,
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Create sale_items table to track individual items in a sale
+CREATE TABLE IF NOT EXISTS sale_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_id uuid REFERENCES sales(id) ON DELETE CASCADE NOT NULL,
+  inventory_id uuid REFERENCES inventory(id) NOT NULL,
+  quantity integer NOT NULL DEFAULT 1,
+  unit_price numeric NOT NULL DEFAULT 0,
+  total_price numeric NOT NULL DEFAULT 0
+);
+
+-- Create financial_transactions table for financial management
+CREATE TABLE IF NOT EXISTS financial_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_date timestamptz NOT NULL DEFAULT now(),
+  description text NOT NULL,
+  amount numeric NOT NULL,
+  type text NOT NULL, -- 'income' or 'expense'
+  category text,
+  related_sale_id uuid REFERENCES sales(id),
+  related_appointment_id uuid REFERENCES appointments(id),
+  payment_method text,
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+
+-- Enable Row Level Security for new tables
+ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE financial_transactions ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for sales (check if they exist first)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'sales' AND policyname = 'Staff can view all sales'
+  ) THEN
+    CREATE POLICY "Staff can view all sales"
+      ON sales FOR SELECT
+      TO authenticated
+      USING (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'sales' AND policyname = 'Staff can insert sales'
+  ) THEN
+    CREATE POLICY "Staff can insert sales"
+      ON sales FOR INSERT
+      TO authenticated
+      WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'sales' AND policyname = 'Staff can update sales'
+  ) THEN
+    CREATE POLICY "Staff can update sales"
+      ON sales FOR UPDATE
+      TO authenticated
+      USING (true);
+  END IF;
+END $$;
+
+-- Create policies for sale_items
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'sale_items' AND policyname = 'Staff can view all sale_items'
+  ) THEN
+    CREATE POLICY "Staff can view all sale_items"
+      ON sale_items FOR SELECT
+      TO authenticated
+      USING (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'sale_items' AND policyname = 'Staff can insert sale_items'
+  ) THEN
+    CREATE POLICY "Staff can insert sale_items"
+      ON sale_items FOR INSERT
+      TO authenticated
+      WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'sale_items' AND policyname = 'Staff can update sale_items'
+  ) THEN
+    CREATE POLICY "Staff can update sale_items"
+      ON sale_items FOR UPDATE
+      TO authenticated
+      USING (true);
+  END IF;
+END $$;
+
+-- Create policies for financial_transactions
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'financial_transactions' AND policyname = 'Staff can view all financial_transactions'
+  ) THEN
+    CREATE POLICY "Staff can view all financial_transactions"
+      ON financial_transactions FOR SELECT
+      TO authenticated
+      USING (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'financial_transactions' AND policyname = 'Staff can insert financial_transactions'
+  ) THEN
+    CREATE POLICY "Staff can insert financial_transactions"
+      ON financial_transactions FOR INSERT
+      TO authenticated
+      WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'financial_transactions' AND policyname = 'Staff can update financial_transactions'
+  ) THEN
+    CREATE POLICY "Staff can update financial_transactions"
+      ON financial_transactions FOR UPDATE
+      TO authenticated
+      USING (true);
+  END IF;
+END $$;
+
+-- Create or replace function to handle new sales
+CREATE OR REPLACE FUNCTION public.handle_new_sale()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.financial_transactions (
+    transaction_date,
+    description,
+    amount,
+    type,
+    category,
+    related_sale_id,
+    payment_method
+  )
+  VALUES (
+    new.sale_date,
+    'Venda de produtos',
+    new.total_amount,
+    'income',
+    'Vendas',
+    new.id,
+    new.payment_method
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop trigger if it exists and create a new one
+DROP TRIGGER IF EXISTS on_sale_created ON sales;
+CREATE TRIGGER on_sale_created
+  AFTER INSERT ON sales
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_sale();
+
+-- Create or replace function to handle completed appointments
+CREATE OR REPLACE FUNCTION public.handle_completed_appointment()
+RETURNS trigger AS $$
+BEGIN
+  IF new.status = 'completed' AND (old.status IS NULL OR old.status <> 'completed') THEN
+    INSERT INTO public.financial_transactions (
+      transaction_date,
+      description,
+      amount,
+      type,
+      category,
+      related_appointment_id
+    )
+    VALUES (
+      new.start_time,
+      'Serviço realizado',
+      new.final_price,
+      'income',
+      'Serviços',
+      new.id
+    );
+  END IF;
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop trigger if it exists and create a new one
+DROP TRIGGER IF EXISTS on_appointment_completed ON appointments;
+CREATE TRIGGER on_appointment_completed
+  AFTER UPDATE ON appointments
+  FOR EACH ROW EXECUTE FUNCTION public.handle_completed_appointment();
+
+-- Create function to decrement inventory quantity
+CREATE OR REPLACE FUNCTION public.decrement(x integer)
+RETURNS integer AS $$
+BEGIN
+  RETURN quantity - x;
+END;
+$$ LANGUAGE plpgsql STABLE;
+==================================================
