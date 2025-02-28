@@ -38,7 +38,7 @@ import {
   Delete as DeleteIcon,
   Phone as PhoneIcon,
   DateRange as DateRangeIcon,
-  Repeat as RepeatIcon, // Novo ícone para recorrência
+  Repeat as RepeatIcon,
 } from '@mui/icons-material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -59,6 +59,7 @@ import {
   addDays,
   getDay,
   format,
+  differenceInWeeks,
 } from 'date-fns';
 
 // Interfaces
@@ -77,7 +78,7 @@ interface Appointment {
     services?: { name: string };
   }[];
   created_by: string;
-  recurrence?: string; // Novo campo para recorrência (ex.: "weekly-tue,thu")
+  recurrence?: string; // Exemplo: "weekly-tue,thu-8" (8 semanas)
 }
 
 interface Client {
@@ -118,8 +119,9 @@ export default function Appointments() {
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('0');
   const [finalPrices, setFinalPrices] = useState<{[key: string]: string}>({});
-  const [recurrenceType, setRecurrenceType] = useState('none'); // Novo estado para tipo de recorrência
-  const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]); // Novo estado para dias da semana
+  const [recurrenceType, setRecurrenceType] = useState('none');
+  const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]);
+  const [recurrenceWeeks, setRecurrenceWeeks] = useState('4'); // Novo estado para número de semanas
 
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
@@ -181,7 +183,30 @@ export default function Appointments() {
       filtered = filtered.filter(appointment => {
         try {
           const appointmentDate = parseISO(appointment.start_time);
-          return isWithinInterval(appointmentDate, { start: startDate, end: endDate });
+          const isInRange = isWithinInterval(appointmentDate, { start: startDate, end: endDate });
+
+          // Verifica recorrência
+          if (!isInRange && appointment.recurrence) {
+            const [type, days, weeks] = appointment.recurrence.split('-');
+            if (type === 'weekly') {
+              const recurrenceDays = days.split(',');
+              const numWeeks = parseInt(weeks) || 4;
+              const baseDate = parseISO(appointment.start_time);
+              const diffWeeks = differenceInWeeks(endDate, baseDate);
+
+              if (diffWeeks >= 0 && diffWeeks <= numWeeks) {
+                const dayOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
+                return recurrenceDays.some(day => {
+                  const baseDay = dayOfWeekMap[day as keyof typeof dayOfWeekMap];
+                  const startDay = getDay(startDate);
+                  const endDay = getDay(endDate);
+                  return baseDay >= startDay && baseDay <= endDay;
+                });
+              }
+            }
+          }
+
+          return isInRange;
         } catch (error) {
           console.error('Erro ao filtrar por data:', error);
           return false;
@@ -196,7 +221,8 @@ export default function Appointments() {
           client?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (client?.phone && client.phone.includes(searchTerm)) ||
           serviceNames.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          appointment.status.toLowerCase().includes(searchTerm.toLowerCase())
+          appointment.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (appointment.recurrence?.toLowerCase().includes(searchTerm.toLowerCase()))
         );
       });
     }
@@ -245,8 +271,16 @@ export default function Appointments() {
       setClientId(appointment.client_id);
       setAppointmentServices(appointment.appointment_services.map(as => as.service_id));
       setAppointmentDate(new Date(appointment.start_time));
-      setRecurrenceType(appointment.recurrence ? 'weekly' : 'none');
-      setRecurrenceDays(appointment.recurrence ? appointment.recurrence.split('-')[1].split(',') : []);
+      if (appointment.recurrence) {
+        const [type, days, weeks] = appointment.recurrence.split('-');
+        setRecurrenceType(type);
+        setRecurrenceDays(days.split(','));
+        setRecurrenceWeeks(weeks);
+      } else {
+        setRecurrenceType('none');
+        setRecurrenceDays([]);
+        setRecurrenceWeeks('4');
+      }
     } else {
       setCurrentAppointment(null);
       setClientId('');
@@ -254,6 +288,7 @@ export default function Appointments() {
       setAppointmentDate(new Date());
       setRecurrenceType('none');
       setRecurrenceDays([]);
+      setRecurrenceWeeks('4');
     }
     setOpenDialog(true);
     setClientSearchTerm('');
@@ -294,7 +329,7 @@ export default function Appointments() {
       let appointmentId: string;
 
       const recurrenceString = recurrenceType === 'weekly' && recurrenceDays.length > 0 
-        ? `weekly-${recurrenceDays.join(',')}` 
+        ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}` 
         : null;
 
       if (currentAppointment) {
@@ -327,10 +362,11 @@ export default function Appointments() {
         if (error) throw error;
         appointmentId = data.id;
 
-        // Se for recorrente, criar agendamentos futuros (exemplo: próximas 4 semanas)
+        // Criar agendamentos futuros com base no número de semanas
         if (recurrenceType === 'weekly' && recurrenceDays.length > 0) {
           const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
-          for (let week = 1; week <= 4; week++) {
+          const numWeeks = parseInt(recurrenceWeeks) || 4;
+          for (let week = 1; week <= numWeeks; week++) {
             for (const day of recurrenceDays) {
               const baseDate = addDays(startDate, week * 7);
               const diffDays = (daysOfWeekMap[day as keyof typeof daysOfWeekMap] - getDay(startDate) + 7) % 7;
@@ -524,7 +560,7 @@ export default function Appointments() {
 
   const getDayOfWeek = (dateString: string) => {
     const date = parseISO(dateString);
-    return format(date, 'EEEE', { locale: ptBR }); // Retorna o dia da semana em português (ex.: "terça-feira")
+    return format(date, 'EEEE', { locale: ptBR });
   };
 
   if (loading) {
@@ -552,7 +588,7 @@ export default function Appointments() {
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2, boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)', display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         <TextField
           variant="outlined"
-          placeholder="Buscar por nome, telefone, serviço ou status..."
+          placeholder="Buscar por nome, telefone, serviço, status ou recorrência..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           InputProps={{
@@ -609,9 +645,9 @@ export default function Appointments() {
               <TableCell>Cliente</TableCell>
               <TableCell>Telefone</TableCell>
               <TableCell>Serviços</TableCell>
-              <TableCell>Dia da Semana</TableCell> {/* Nova coluna */}
+              <TableCell>Dia da Semana</TableCell>
               <TableCell>Data e Hora</TableCell>
-              <TableCell>Recorrência</TableCell> {/* Nova coluna */}
+              <TableCell>Recorrência</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="right">Ações</TableCell>
             </TableRow>
@@ -633,12 +669,12 @@ export default function Appointments() {
                     )}
                   </TableCell>
                   <TableCell>{appointment.appointment_services.map(as => as.services?.name || services.find(s => s.id === as.service_id)?.name || '').join(', ')}</TableCell>
-                  <TableCell>{getDayOfWeek(appointment.start_time)}</TableCell> {/* Exibir dia da semana */}
+                  <TableCell>{getDayOfWeek(appointment.start_time)}</TableCell>
                   <TableCell>{new Date(appointment.start_time).toLocaleString('pt-BR')}</TableCell>
                   <TableCell>
                     {appointment.recurrence ? (
                       <Chip 
-                        label={`Recorrente: ${appointment.recurrence.split('-')[1].replace(/,/g, ', ')}`}
+                        label={`Recorrente: ${appointment.recurrence.split('-')[1].replace(/,/g, ', ')} (${appointment.recurrence.split('-')[2]} semanas)`}
                         icon={<RepeatIcon />}
                         size="small"
                         color="info"
@@ -779,23 +815,34 @@ export default function Appointments() {
               </Select>
             </FormControl>
             {recurrenceType === 'weekly' && (
-              <FormControl fullWidth sx={{ mt: 2 }}>
-                <InputLabel>Dias da Semana</InputLabel>
-                <Select
-                  multiple
-                  value={recurrenceDays}
-                  onChange={(e) => setRecurrenceDays(e.target.value as string[])}
-                  renderValue={(selected) => selected.map(day => day === 'mon' ? 'Seg' : day === 'tue' ? 'Ter' : day === 'wed' ? 'Qua' : day === 'thu' ? 'Qui' : day === 'fri' ? 'Sex' : day === 'sat' ? 'Sáb' : 'Dom').join(', ')}
-                  label="Dias da Semana"
-                >
-                  {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => (
-                    <MenuItem key={day} value={day}>
-                      <Checkbox checked={recurrenceDays.includes(day)} />
-                      <ListItemText primary={day === 'mon' ? 'Segunda' : day === 'tue' ? 'Terça' : day === 'wed' ? 'Quarta' : day === 'thu' ? 'Quinta' : day === 'fri' ? 'Sexta' : day === 'sat' ? 'Sábado' : 'Domingo'} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <>
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <InputLabel>Dias da Semana</InputLabel>
+                  <Select
+                    multiple
+                    value={recurrenceDays}
+                    onChange={(e) => setRecurrenceDays(e.target.value as string[])}
+                    renderValue={(selected) => selected.map(day => day === 'mon' ? 'Seg' : day === 'tue' ? 'Ter' : day === 'wed' ? 'Qua' : day === 'thu' ? 'Qui' : day === 'fri' ? 'Sex' : day === 'sat' ? 'Sáb' : 'Dom').join(', ')}
+                    label="Dias da Semana"
+                  >
+                    {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => (
+                      <MenuItem key={day} value={day}>
+                        <Checkbox checked={recurrenceDays.includes(day)} />
+                        <ListItemText primary={day === 'mon' ? 'Segunda' : day === 'tue' ? 'Terça' : day === 'wed' ? 'Quarta' : day === 'thu' ? 'Quinta' : day === 'fri' ? 'Sexta' : day === 'sat' ? 'Sábado' : 'Domingo'} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  label="Número de Semanas"
+                  type="number"
+                  value={recurrenceWeeks}
+                  onChange={(e) => setRecurrenceWeeks(e.target.value)}
+                  inputProps={{ min: 1 }}
+                  sx={{ mt: 2 }}
+                />
+              </>
             )}
           </Box>
         </DialogContent>
