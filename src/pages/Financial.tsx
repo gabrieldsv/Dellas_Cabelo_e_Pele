@@ -32,7 +32,11 @@ import {
   Card,
   CardContent,
   Tooltip,
-  DialogContentText
+  DialogContentText,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -42,7 +46,8 @@ import {
   FilterList as FilterIcon,
   PieChart as ChartIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  AddCircleOutline as AddCategoryIcon
 } from '@mui/icons-material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -101,6 +106,7 @@ export default function Financial() {
   const [openNewTransactionDialog, setOpenNewTransactionDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [openDeleteLinkedDialog, setOpenDeleteLinkedDialog] = useState(false);
+  const [openCategoryDialog, setOpenCategoryDialog] = useState(false);
   const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
   const [transactionType, setTransactionType] = useState('expense');
   const [transactionAmount, setTransactionAmount] = useState('');
@@ -109,6 +115,15 @@ export default function Financial() {
   const [transactionPaymentMethod, setTransactionPaymentMethod] = useState('');
   const [transactionNotes, setTransactionNotes] = useState('');
   const [transactionDate, setTransactionDate] = useState<Date | null>(new Date());
+  
+  // Category management
+  const [incomeCategories, setIncomeCategories] = useState<string[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categoryType, setCategoryType] = useState<'income' | 'expense'>('expense');
+  const [categoryAction, setCategoryAction] = useState<'add' | 'edit' | 'delete'>('add');
   
   const [tabValue, setTabValue] = useState(0);
   const [categories, setCategories] = useState<string[]>([]);
@@ -142,6 +157,22 @@ export default function Financial() {
         new Set(data?.map(item => item.category).filter(Boolean) || [])
       );
       setCategories(uniqueCategories);
+      
+      // Separate income and expense categories
+      const incomeCategs = Array.from(
+        new Set(data?.filter(item => item.type === 'income').map(item => item.category).filter(Boolean) || [])
+      );
+      
+      const expenseCategs = Array.from(
+        new Set(data?.filter(item => item.type === 'expense').map(item => item.category).filter(Boolean) || [])
+      );
+      
+      // Add default categories if they don't exist
+      const defaultIncomeCategories = ['Serviços', 'Vendas', 'Outros'];
+      const defaultExpenseCategories = ['Aluguel', 'Salários', 'Produtos', 'Equipamentos', 'Marketing', 'Impostos', 'Utilidades', 'Outros'];
+      
+      setIncomeCategories([...new Set([...incomeCategs, ...defaultIncomeCategories])]);
+      setExpenseCategories([...new Set([...expenseCategs, ...defaultExpenseCategories])]);
       
       handleFilter(data || []);
     } catch (error) {
@@ -248,6 +279,8 @@ export default function Financial() {
 
   const handleTransactionTypeChange = (event: SelectChangeEvent) => {
     setTransactionType(event.target.value);
+    // Reset category when changing type
+    setTransactionCategory('');
   };
 
   const handleTransactionCategoryChange = (event: SelectChangeEvent) => {
@@ -256,6 +289,133 @@ export default function Financial() {
 
   const handleTransactionPaymentMethodChange = (event: SelectChangeEvent) => {
     setTransactionPaymentMethod(event.target.value);
+  };
+
+  // Category management
+  const handleOpenCategoryDialog = (action: 'add' | 'edit' | 'delete', type: 'income' | 'expense', category?: string) => {
+    setCategoryAction(action);
+    setCategoryType(type);
+    setNewCategoryName('');
+    setEditCategoryName('');
+    setSelectedCategory('');
+    
+    if (action === 'edit' || action === 'delete') {
+      setSelectedCategory(category || '');
+      setEditCategoryName(category || '');
+    }
+    
+    setOpenCategoryDialog(true);
+  };
+  
+  const handleCloseCategoryDialog = () => {
+    setOpenCategoryDialog(false);
+  };
+  
+  const handleAddCategory = () => {
+    if (!newCategoryName.trim()) {
+      setError('Nome da categoria é obrigatório');
+      return;
+    }
+    
+    if (categoryType === 'income') {
+      if (incomeCategories.includes(newCategoryName)) {
+        setError('Esta categoria já existe');
+        return;
+      }
+      setIncomeCategories([...incomeCategories, newCategoryName]);
+    } else {
+      if (expenseCategories.includes(newCategoryName)) {
+        setError('Esta categoria já existe');
+        return;
+      }
+      setExpenseCategories([...expenseCategories, newCategoryName]);
+    }
+    
+    setSuccess('Categoria adicionada com sucesso!');
+    handleCloseCategoryDialog();
+  };
+  
+  const handleEditCategory = () => {
+    if (!editCategoryName.trim() || !selectedCategory) {
+      setError('Nome da categoria é obrigatório');
+      return;
+    }
+    
+    if (categoryType === 'income') {
+      if (incomeCategories.includes(editCategoryName) && editCategoryName !== selectedCategory) {
+        setError('Esta categoria já existe');
+        return;
+      }
+      
+      const updatedCategories = incomeCategories.map(cat => 
+        cat === selectedCategory ? editCategoryName : cat
+      );
+      setIncomeCategories(updatedCategories);
+      
+      // Update transactions with this category
+      updateTransactionCategories(selectedCategory, editCategoryName);
+    } else {
+      if (expenseCategories.includes(editCategoryName) && editCategoryName !== selectedCategory) {
+        setError('Esta categoria já existe');
+        return;
+      }
+      
+      const updatedCategories = expenseCategories.map(cat => 
+        cat === selectedCategory ? editCategoryName : cat
+      );
+      setExpenseCategories(updatedCategories);
+      
+      // Update transactions with this category
+      updateTransactionCategories(selectedCategory, editCategoryName);
+    }
+    
+    setSuccess('Categoria atualizada com sucesso!');
+    handleCloseCategoryDialog();
+  };
+  
+  const handleDeleteCategory = () => {
+    if (!selectedCategory) {
+      setError('Selecione uma categoria para excluir');
+      return;
+    }
+    
+    // Check if category is in use
+    const categoryInUse = transactions.some(t => 
+      t.category === selectedCategory && t.type === categoryType
+    );
+    
+    if (categoryInUse) {
+      setError('Esta categoria está em uso e não pode ser excluída');
+      return;
+    }
+    
+    if (categoryType === 'income') {
+      setIncomeCategories(incomeCategories.filter(cat => cat !== selectedCategory));
+    } else {
+      setExpenseCategories(expenseCategories.filter(cat => cat !== selectedCategory));
+    }
+    
+    setSuccess('Categoria excluída com sucesso!');
+    handleCloseCategoryDialog();
+  };
+  
+  const updateTransactionCategories = async (oldCategory: string, newCategory: string) => {
+    try {
+      // Update all transactions with this category
+      const { error } = await supabase
+        .from('financial_transactions')
+        .update({ category: newCategory })
+        .eq('category', oldCategory)
+        .eq('type', categoryType);
+      
+      if (error) throw error;
+      
+      // Refresh data
+      fetchData();
+    } catch (error) {
+      console.error('Error updating transaction categories:', error);
+      setError('Erro ao atualizar transações com esta categoria');
+    }
   };
 
   const handleSaveTransaction = async () => {
@@ -616,6 +776,7 @@ export default function Financial() {
           <Tabs value={tabValue} onChange={handleTabChange} aria-label="financial tabs">
             <Tab label="Transações" />
             <Tab label="Relatórios" />
+            <Tab label="Categorias" />
           </Tabs>
         </Box>
         
@@ -735,7 +896,7 @@ export default function Financial() {
                             dataKey="value"
                             label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                           >
-                            {chartData.income.map((entry, index) => (
+                            {chartData.income.map((_entry, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
@@ -774,7 +935,7 @@ export default function Financial() {
                             dataKey="value"
                             label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                           >
-                            {chartData.expense.map((entry, index) => (
+                            {chartData.expense.map((_entry, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
@@ -849,6 +1010,109 @@ export default function Financial() {
             </Grid>
           </Grid>
         </TabPanel>
+        
+        {/* Categories Tab */}
+        <TabPanel value={tabValue} index={2}>
+          <Grid container spacing={3}>
+            {/* Income Categories */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+                      <IncomeIcon color="success" sx={{ mr: 1 }} /> Categorias de Receita
+                    </Typography>
+                    <Button 
+                      variant="outlined" 
+                      color="success" 
+                      startIcon={<AddCategoryIcon />}
+                      size="small"
+                      onClick={() => handleOpenCategoryDialog('add', 'income')}
+                    >
+                      Nova Categoria
+                    </Button>
+                  </Box>
+                  
+                  <List>
+                    {incomeCategories.map(category => (
+                      <ListItem key={category} divider>
+                        <ListItemText primary={category} />
+                        <ListItemSecondaryAction>
+                          <IconButton 
+                            edge="end" 
+                            size="small" 
+                            color="primary"
+                            onClick={() => handleOpenCategoryDialog('edit', 'income', category)}
+                            sx={{ mr: 1 }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton 
+                            edge="end" 
+                            size="small" 
+                            color="error"
+                            onClick={() => handleOpenCategoryDialog('delete', 'income', category)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            {/* Expense Categories */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+                      <ExpenseIcon color="error" sx={{ mr: 1 }} /> Categorias de Despesa
+                    </Typography>
+                    <Button 
+                      variant="outlined" 
+                      color="error" 
+                      startIcon={<AddCategoryIcon />}
+                      size="small"
+                      onClick={() => handleOpenCategoryDialog('add', 'expense')}
+                    >
+                      Nova Categoria
+                    </Button>
+                  </Box>
+                  
+                  <List>
+                    {expenseCategories.map(category => (
+                      <ListItem key={category} divider>
+                        <ListItemText primary={category} />
+                        <ListItemSecondaryAction>
+                          <IconButton 
+                            edge="end" 
+                            size="small" 
+                            color="primary"
+                            onClick={() => handleOpenCategoryDialog('edit', 'expense', category)}
+                            sx={{ mr: 1 }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton 
+                            edge="end" 
+                            size="small" 
+                            color="error"
+                            onClick={() => handleOpenCategoryDialog('delete', 'expense', category)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
       </Box>
 
       {/* Modal de transação (nova ou edição) */}
@@ -912,7 +1176,7 @@ export default function Financial() {
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={9}>
               <FormControl fullWidth sx={{ mb: 2 }}>
                 <InputLabel id="transaction-category-label">Categoria</InputLabel>
                 <Select
@@ -922,28 +1186,30 @@ export default function Financial() {
                   onChange={handleTransactionCategoryChange}
                 >
                   {transactionType === 'income' ? (
-                    [
-                      <MenuItem key="servicos" value="Serviços">Serviços</MenuItem>,
-                      <MenuItem key="vendas" value="Vendas">Vendas</MenuItem>,
-                      <MenuItem key="outros" value="Outros">Outros</MenuItem>
-                    ]
+                    incomeCategories.map(category => (
+                      <MenuItem key={category} value={category}>{category}</MenuItem>
+                    ))
                   ) : (
-                    [
-                      <MenuItem key="aluguel" value="Aluguel">Aluguel</MenuItem>,
-                      <MenuItem key="salarios" value="Salários">Salários</MenuItem>,
-                      <MenuItem key="produtos" value="Produtos">Produtos</MenuItem>,
-                      <MenuItem key="equipamentos" value="Equipamentos">Equipamentos</MenuItem>,
-                      <MenuItem key="marketing" value="Marketing">Marketing</MenuItem>,
-                      <MenuItem key="impostos" value="Impostos">Impostos</MenuItem>,
-                      <MenuItem key="utilidades" value="Utilidades">Utilidades (Água, Luz, etc)</MenuItem>,
-                      <MenuItem key="outros" value="Outros">Outros</MenuItem>
-                    ]
+                    expenseCategories.map(category => (
+                      <MenuItem key={category} value={category}>{category}</MenuItem>
+                    ))
                   )}
                 </Select>
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={3}>
+              <Button 
+                fullWidth 
+                variant="outlined" 
+                onClick={() => handleOpenCategoryDialog('add', transactionType === 'income' ? 'income' : 'expense')}
+                sx={{ height: '56px', mb: 2 }}
+              >
+                Nova
+              </Button>
+            </Grid>
+            
+            <Grid item xs={12}>
               <FormControl fullWidth sx={{ mb: 2 }}>
                 <InputLabel id="payment-method-label">Forma de Pagamento</InputLabel>
                 <Select
@@ -952,14 +1218,12 @@ export default function Financial() {
                   label="Forma de Pagamento"
                   onChange={handleTransactionPaymentMethodChange}
                 >
-                  {[
-                    <MenuItem key="dinheiro" value="Dinheiro">Dinheiro</MenuItem>,
-                    <MenuItem key="credito" value="Cartão de Crédito">Cartão de Crédito</MenuItem>,
-                    <MenuItem key="debito" value="Cartão de Débito">Cartão de Débito</MenuItem>,
-                    <MenuItem key="pix" value="PIX">PIX</MenuItem>,
-                    <MenuItem key="transferencia" value="Transferência">Transferência</MenuItem>,
-                    <MenuItem key="boleto" value="Boleto">Boleto</MenuItem>
-                  ]}
+                  <MenuItem value="Dinheiro">Dinheiro</MenuItem>
+                  <MenuItem value="Cartão de Crédito">Cartão de Crédito</MenuItem>
+                  <MenuItem value="Cartão de Débito">Cartão de Débito</MenuItem>
+                  <MenuItem value="PIX">PIX</MenuItem>
+                  <MenuItem value="Transferência">Transferência</MenuItem>
+                  <MenuItem value="Boleto">Boleto</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -1011,7 +1275,7 @@ export default function Financial() {
                 {currentTransaction.description}
               </Typography>
               <Typography variant="body2">
-                Data: {format(new Date(currentTransaction.transaction_date), 'dd/MM/yyyy')}
+                Data: {format(new Date( currentTransaction.transaction_date), 'dd/MM/yyyy')}
               </Typography>
               <Typography variant="body2">
                 Valor: R$ {currentTransaction.amount.toFixed(2)}
@@ -1115,6 +1379,78 @@ export default function Financial() {
           >
             {loading ? 'Excluindo...' : 'Excluir Todos os Registros'}
           </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Modal de gerenciamento de categorias */}
+      <Dialog
+        open={openCategoryDialog}
+        onClose={handleCloseCategoryDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {categoryAction === 'add' && `Nova Categoria de ${categoryType === 'income' ? 'Receita' : 'Despesa'}`}
+          {categoryAction === 'edit' && `Editar Categoria de ${categoryType === 'income' ? 'Receita' : 'Despesa'}`}
+          {categoryAction === 'delete' && `Excluir Categoria de ${categoryType === 'income' ? 'Receita' : 'Despesa'}`}
+        </DialogTitle>
+        <DialogContent>
+          {categoryAction === 'add' && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Nome da Categoria"
+              fullWidth
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              required
+              sx={{ mt: 1 }}
+            />
+          )}
+          
+          {categoryAction === 'edit' && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Novo Nome da Categoria"
+              fullWidth
+              value={editCategoryName}
+              onChange={(e) => setEditCategoryName(e.target.value)}
+              required
+              sx={{ mt: 1 }}
+            />
+          )}
+          
+          {categoryAction === 'delete' && (
+            <>
+              <DialogContentText>
+                Tem certeza que deseja excluir a categoria "{selectedCategory}"?
+              </DialogContentText>
+              <DialogContentText sx={{ mt: 2, color: 'error.main' }}>
+                Nota: Só é possível excluir categorias que não estão sendo utilizadas em nenhuma transação.
+              </DialogContentText>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCategoryDialog} color="primary">
+            Cancelar
+          </Button>
+          {categoryAction === 'add' && (
+            <Button onClick={handleAddCategory} color="primary" variant="contained">
+              Adicionar
+            </Button>
+          )}
+          {categoryAction === 'edit' && (
+            <Button onClick={handleEditCategory} color="primary" variant="contained">
+              Salvar
+            </Button>
+          )}
+          {categoryAction === 'delete' && (
+            <Button onClick={handleDeleteCategory} color="error" variant="contained">
+              Excluir
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

@@ -103,6 +103,12 @@ export default function Appointments() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { user } = useAuth();
+  
+  // Search fields for modals
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('');
+  const [filteredClients, setFilteredClients] = useState<Client[]>([]);
+  const [filteredServices, setFilteredServices] = useState<Service[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -136,7 +142,9 @@ export default function Appointments() {
       setAppointments(appointmentsData.data || []);
       setFilteredAppointments(appointmentsData.data || []);
       setClients(clientsData.data || []);
+      setFilteredClients(clientsData.data || []);
       setServices(servicesData.data || []);
+      setFilteredServices(servicesData.data || []);
     } catch (error) {
       setError('Erro ao carregar dados');
       console.error(error);
@@ -173,6 +181,44 @@ export default function Appointments() {
     setFilteredAppointments(filtered);
   };
 
+  // Filter clients in the client selection modal
+  const handleFilterClients = () => {
+    if (!clientSearchTerm) {
+      setFilteredClients(clients);
+      return;
+    }
+    
+    const filtered = clients.filter(client => 
+      client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+      (client.phone && client.phone.includes(clientSearchTerm))
+    );
+    
+    setFilteredClients(filtered);
+  };
+  
+  // Filter services in the service selection modal
+  const handleFilterServices = () => {
+    if (!serviceSearchTerm) {
+      setFilteredServices(services);
+      return;
+    }
+    
+    const filtered = services.filter(service => 
+      service.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()) ||
+      service.price.toString().includes(serviceSearchTerm)
+    );
+    
+    setFilteredServices(filtered);
+  };
+  
+  useEffect(() => {
+    handleFilterClients();
+  }, [clientSearchTerm, clients]);
+  
+  useEffect(() => {
+    handleFilterServices();
+  }, [serviceSearchTerm, services]);
+
   useEffect(() => {
     handleFilter();
   }, [searchTerm, appointments, clients, services]);
@@ -198,6 +244,8 @@ export default function Appointments() {
     setNewClientPhone('');
     setNewServiceName('');
     setNewServicePrice('0');
+    setClientSearchTerm('');
+    setServiceSearchTerm('');
   };
 
   const handleCloseClientDialog = () => {
@@ -322,6 +370,7 @@ export default function Appointments() {
       if (error) throw error;
 
       setClients([...clients, data]);
+      setFilteredClients([...filteredClients, data]);
       setClientId(data.id);
       handleCloseClientDialog();
     } catch (error) {
@@ -355,6 +404,7 @@ export default function Appointments() {
       if (error) throw error;
 
       setServices([...services, data]);
+      setFilteredServices([...filteredServices, data]);
       setAppointmentServices([...appointmentServices, data.id]);
       handleCloseServiceDialog();
     } catch (error) {
@@ -701,8 +751,40 @@ export default function Appointments() {
                 },
               })}
             >
-              {clients.map(client => (
-                <MenuItem key={client.id} value={client.id}>{client.name}</MenuItem>
+              {/* Add search field inside the Select */}
+              <MenuItem value="" disabled>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Buscar cliente..."
+                  value={clientSearchTerm}
+                  onChange={(e) => {
+                    e.stopPropagation(); // Prevent closing the dropdown
+                    setClientSearchTerm(e.target.value);
+                  }}
+                  onClick={(e) => e.stopPropagation()} // Prevent closing the dropdown
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ mb: 1 }}
+                />
+              </MenuItem>
+              
+              {filteredClients.map(client => (
+                <MenuItem key={client.id} value={client.id}>
+                  <Box>
+                    <Typography variant="body1">{client.name}</Typography>
+                    {client.phone && (
+                      <Typography variant="caption" color="text.secondary">
+                        {formatPhoneDisplay(client.phone)}
+                      </Typography>
+                    )}
+                  </Box>
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -719,7 +801,30 @@ export default function Appointments() {
               label="Serviços"
               sx={{ borderRadius: 16 }}
             >
-              {services.map(service => (
+              {/* Add search field inside the Select */}
+              <MenuItem value="" disabled>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Buscar serviço..."
+                  value={serviceSearchTerm}
+                  onChange={(e) => {
+                    e.stopPropagation(); // Prevent closing the dropdown
+                    setServiceSearchTerm(e.target.value);
+                  }}
+                  onClick={(e) => e.stopPropagation()} // Prevent closing the dropdown
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ mb: 1 }}
+                />
+              </MenuItem>
+              
+              {filteredServices.map(service => (
                 <MenuItem key={service.id} value={service.id}>
                   <Checkbox checked={appointmentServices.includes(service.id)} />
                   <ListItemText 
