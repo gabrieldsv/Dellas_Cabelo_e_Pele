@@ -38,6 +38,7 @@ import {
   Delete as DeleteIcon,
   Phone as PhoneIcon,
   DateRange as DateRangeIcon,
+  Repeat as RepeatIcon, // Novo ícone para recorrência
 } from '@mui/icons-material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -54,7 +55,10 @@ import {
   startOfDay, 
   endOfDay, 
   isWithinInterval, 
-  parseISO 
+  parseISO,
+  addDays,
+  getDay,
+  format,
 } from 'date-fns';
 
 // Interfaces
@@ -73,6 +77,7 @@ interface Appointment {
     services?: { name: string };
   }[];
   created_by: string;
+  recurrence?: string; // Novo campo para recorrência (ex.: "weekly-tue,thu")
 }
 
 interface Client {
@@ -113,6 +118,8 @@ export default function Appointments() {
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('0');
   const [finalPrices, setFinalPrices] = useState<{[key: string]: string}>({});
+  const [recurrenceType, setRecurrenceType] = useState('none'); // Novo estado para tipo de recorrência
+  const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]); // Novo estado para dias da semana
 
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
@@ -140,14 +147,11 @@ export default function Appointments() {
       if (clientsData.error) throw clientsData.error;
       if (servicesData.error) throw servicesData.error;
 
-      // Log para depurar a quantidade de clientes carregados
-      console.log('Clientes carregados:', clientsData.data);
-
       const sortedClients = (clientsData.data || []).sort((a, b) => a.name.localeCompare(b.name));
       setAppointments(appointmentsData.data || []);
       setFilteredAppointments(appointmentsData.data || []);
       setClients(sortedClients);
-      setFilteredClients(sortedClients); // Inicializa com todos os clientes ordenados
+      setFilteredClients(sortedClients);
       setServices(servicesData.data || []);
       setFilteredServices(servicesData.data || []);
     } catch (error) {
@@ -214,8 +218,6 @@ export default function Appointments() {
     }
     filtered.sort((a, b) => a.name.localeCompare(b.name));
     setFilteredClients(filtered);
-    // Log para depurar a lista filtrada
-    console.log('Clientes filtrados:', filtered);
   };
 
   const handleFilterServices = () => {
@@ -243,15 +245,19 @@ export default function Appointments() {
       setClientId(appointment.client_id);
       setAppointmentServices(appointment.appointment_services.map(as => as.service_id));
       setAppointmentDate(new Date(appointment.start_time));
+      setRecurrenceType(appointment.recurrence ? 'weekly' : 'none');
+      setRecurrenceDays(appointment.recurrence ? appointment.recurrence.split('-')[1].split(',') : []);
     } else {
       setCurrentAppointment(null);
       setClientId('');
       setAppointmentServices([]);
       setAppointmentDate(new Date());
+      setRecurrenceType('none');
+      setRecurrenceDays([]);
     }
     setOpenDialog(true);
-    setClientSearchTerm(''); // Resetar a busca ao abrir o modal
-    handleFilterClients(); // Carregar todos os clientes ordenados
+    setClientSearchTerm('');
+    handleFilterClients();
   };
 
   const handleCloseDialog = () => {
@@ -287,10 +293,19 @@ export default function Appointments() {
       const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
       let appointmentId: string;
 
+      const recurrenceString = recurrenceType === 'weekly' && recurrenceDays.length > 0 
+        ? `weekly-${recurrenceDays.join(',')}` 
+        : null;
+
       if (currentAppointment) {
         const { error, data } = await supabase
           .from('appointments')
-          .update({ client_id: clientId, start_time: startDate.toISOString(), end_time: endDate.toISOString() })
+          .update({ 
+            client_id: clientId, 
+            start_time: startDate.toISOString(), 
+            end_time: endDate.toISOString(),
+            recurrence: recurrenceString 
+          })
           .eq('id', currentAppointment.id)
           .select('id')
           .single();
@@ -299,11 +314,42 @@ export default function Appointments() {
       } else {
         const { error, data } = await supabase
           .from('appointments')
-          .insert([{ client_id: clientId, start_time: startDate.toISOString(), end_time: endDate.toISOString(), status: 'scheduled', created_by: user?.id }])
+          .insert([{ 
+            client_id: clientId, 
+            start_time: startDate.toISOString(), 
+            end_time: endDate.toISOString(), 
+            status: 'scheduled', 
+            created_by: user?.id,
+            recurrence: recurrenceString 
+          }])
           .select('id')
           .single();
         if (error) throw error;
         appointmentId = data.id;
+
+        // Se for recorrente, criar agendamentos futuros (exemplo: próximas 4 semanas)
+        if (recurrenceType === 'weekly' && recurrenceDays.length > 0) {
+          const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
+          for (let week = 1; week <= 4; week++) {
+            for (const day of recurrenceDays) {
+              const baseDate = addDays(startDate, week * 7);
+              const diffDays = (daysOfWeekMap[day as keyof typeof daysOfWeekMap] - getDay(startDate) + 7) % 7;
+              const newStartDate = addDays(baseDate, diffDays - 7);
+              const newEndDate = new Date(newStartDate.getTime() + totalDurationMinutes * 60000);
+
+              await supabase
+                .from('appointments')
+                .insert([{ 
+                  client_id: clientId, 
+                  start_time: newStartDate.toISOString(), 
+                  end_time: newEndDate.toISOString(), 
+                  status: 'scheduled', 
+                  created_by: user?.id,
+                  recurrence: recurrenceString 
+                }]);
+            }
+          }
+        }
       }
 
       await supabase.from('appointment_services').delete().eq('appointment_id', appointmentId);
@@ -476,6 +522,11 @@ export default function Appointments() {
     return phone;
   };
 
+  const getDayOfWeek = (dateString: string) => {
+    const date = parseISO(dateString);
+    return format(date, 'EEEE', { locale: ptBR }); // Retorna o dia da semana em português (ex.: "terça-feira")
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -558,7 +609,9 @@ export default function Appointments() {
               <TableCell>Cliente</TableCell>
               <TableCell>Telefone</TableCell>
               <TableCell>Serviços</TableCell>
-              <TableCell>Data</TableCell>
+              <TableCell>Dia da Semana</TableCell> {/* Nova coluna */}
+              <TableCell>Data e Hora</TableCell>
+              <TableCell>Recorrência</TableCell> {/* Nova coluna */}
               <TableCell>Status</TableCell>
               <TableCell align="right">Ações</TableCell>
             </TableRow>
@@ -580,7 +633,18 @@ export default function Appointments() {
                     )}
                   </TableCell>
                   <TableCell>{appointment.appointment_services.map(as => as.services?.name || services.find(s => s.id === as.service_id)?.name || '').join(', ')}</TableCell>
+                  <TableCell>{getDayOfWeek(appointment.start_time)}</TableCell> {/* Exibir dia da semana */}
                   <TableCell>{new Date(appointment.start_time).toLocaleString('pt-BR')}</TableCell>
+                  <TableCell>
+                    {appointment.recurrence ? (
+                      <Chip 
+                        label={`Recorrente: ${appointment.recurrence.split('-')[1].replace(/,/g, ', ')}`}
+                        icon={<RepeatIcon />}
+                        size="small"
+                        color="info"
+                      />
+                    ) : 'Único'}
+                  </TableCell>
                   <TableCell>{getStatusChip(appointment.status)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -701,6 +765,39 @@ export default function Appointments() {
               slotProps={{ textField: { fullWidth: true, sx: { mt: 2, borderRadius: 2 } } }}
             />
           </LocalizationProvider>
+          {/* Recorrência */}
+          <Box sx={{ mt: 2 }}>
+            <FormControl fullWidth>
+              <InputLabel>Tipo de Recorrência</InputLabel>
+              <Select
+                value={recurrenceType}
+                onChange={(e) => setRecurrenceType(e.target.value)}
+                label="Tipo de Recorrência"
+              >
+                <MenuItem value="none">Nenhuma</MenuItem>
+                <MenuItem value="weekly">Semanal</MenuItem>
+              </Select>
+            </FormControl>
+            {recurrenceType === 'weekly' && (
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel>Dias da Semana</InputLabel>
+                <Select
+                  multiple
+                  value={recurrenceDays}
+                  onChange={(e) => setRecurrenceDays(e.target.value as string[])}
+                  renderValue={(selected) => selected.map(day => day === 'mon' ? 'Seg' : day === 'tue' ? 'Ter' : day === 'wed' ? 'Qua' : day === 'thu' ? 'Qui' : day === 'fri' ? 'Sex' : day === 'sat' ? 'Sáb' : 'Dom').join(', ')}
+                  label="Dias da Semana"
+                >
+                  {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => (
+                    <MenuItem key={day} value={day}>
+                      <Checkbox checked={recurrenceDays.includes(day)} />
+                      <ListItemText primary={day === 'mon' ? 'Segunda' : day === 'tue' ? 'Terça' : day === 'wed' ? 'Quarta' : day === 'thu' ? 'Quinta' : day === 'fri' ? 'Sexta' : day === 'sat' ? 'Sábado' : 'Domingo'} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
           <Button onClick={handleCloseDialog} sx={{ color: 'text.secondary' }}>Cancelar</Button>
