@@ -28,6 +28,9 @@ import {
   InputLabel,
   FormControl,
   Chip,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
 } from '@mui/material';
 import { 
   Add as AddIcon,
@@ -78,7 +81,7 @@ interface Appointment {
     services?: { name: string };
   }[];
   created_by: string;
-  recurrence?: string; // Exemplo: "weekly-tue,thu-8" (8 semanas)
+  recurrence?: string; // Exemplo: "weekly-tue,thu-8"
 }
 
 interface Client {
@@ -110,6 +113,7 @@ export default function Appointments() {
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
+  const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single'); // Novo estado para escopo de exclusão
 
   const [clientId, setClientId] = useState('');
   const [appointmentServices, setAppointmentServices] = useState<string[]>([]);
@@ -121,7 +125,7 @@ export default function Appointments() {
   const [finalPrices, setFinalPrices] = useState<{[key: string]: string}>({});
   const [recurrenceType, setRecurrenceType] = useState('none');
   const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]);
-  const [recurrenceWeeks, setRecurrenceWeeks] = useState('4'); // Novo estado para número de semanas
+  const [recurrenceWeeks, setRecurrenceWeeks] = useState('4');
 
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
@@ -185,7 +189,6 @@ export default function Appointments() {
           const appointmentDate = parseISO(appointment.start_time);
           const isInRange = isWithinInterval(appointmentDate, { start: startDate, end: endDate });
 
-          // Verifica recorrência
           if (!isInRange && appointment.recurrence) {
             const [type, days, weeks] = appointment.recurrence.split('-');
             if (type === 'weekly') {
@@ -326,28 +329,81 @@ export default function Appointments() {
       const totalDurationMinutes = appointmentServices.length * 30;
       const startDate = new Date(appointmentDate);
       const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
-      let appointmentId: string;
-
       const recurrenceString = recurrenceType === 'weekly' && recurrenceDays.length > 0 
         ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}` 
         : null;
 
       if (currentAppointment) {
-        const { error, data } = await supabase
-          .from('appointments')
-          .update({ 
-            client_id: clientId, 
-            start_time: startDate.toISOString(), 
-            end_time: endDate.toISOString(),
-            recurrence: recurrenceString 
-          })
-          .eq('id', currentAppointment.id)
-          .select('id')
-          .single();
-        if (error) throw error;
-        appointmentId = data.id;
+        // Atualizar todos os agendamentos recorrentes relacionados
+        if (currentAppointment.recurrence) {
+          const relatedAppointments = appointments.filter(a => a.recurrence === currentAppointment.recurrence);
+          const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
+          
+          // Excluir serviços antigos e agendamentos relacionados
+          for (const appt of relatedAppointments) {
+            await supabase.from('appointment_services').delete().eq('appointment_id', appt.id);
+            await supabase.from('appointments').delete().eq('id', appt.id);
+          }
+
+          // Recriar agendamentos com os novos dados
+          const numWeeks = parseInt(recurrenceWeeks) || 4;
+          for (let week = 0; week <= numWeeks; week++) {
+            for (const day of recurrenceDays) {
+              const baseDate = addDays(startDate, week * 7);
+              const diffDays = (daysOfWeekMap[day as keyof typeof daysOfWeekMap] - getDay(startDate) + 7) % 7;
+              const newStartDate = addDays(baseDate, diffDays - 7);
+              const newEndDate = new Date(newStartDate.getTime() + totalDurationMinutes * 60000);
+
+              const { data, error } = await supabase
+                .from('appointments')
+                .insert([{ 
+                  client_id: clientId, 
+                  start_time: newStartDate.toISOString(), 
+                  end_time: newEndDate.toISOString(), 
+                  status: 'scheduled', 
+                  created_by: user?.id,
+                  recurrence: recurrenceString 
+                }])
+                .select('id')
+                .single();
+              if (error) throw error;
+
+              const servicesToInsert = appointmentServices.map(serviceId => ({
+                appointment_id: data.id,
+                service_id: serviceId,
+                price: services.find(s => s.id === serviceId)?.price || 0,
+                final_price: 0
+              }));
+              await supabase.from('appointment_services').insert(servicesToInsert);
+            }
+          }
+        } else {
+          // Atualizar apenas o agendamento atual (não recorrente)
+          const { data, error } = await supabase
+            .from('appointments')
+            .update({ 
+              client_id: clientId, 
+              start_time: startDate.toISOString(), 
+              end_time: endDate.toISOString(),
+              recurrence: recurrenceString 
+            })
+            .eq('id', currentAppointment.id)
+            .select('id')
+            .single();
+          if (error) throw error;
+
+          await supabase.from('appointment_services').delete().eq('appointment_id', data.id);
+          const servicesToInsert = appointmentServices.map(serviceId => ({
+            appointment_id: data.id,
+            service_id: serviceId,
+            price: services.find(s => s.id === serviceId)?.price || 0,
+            final_price: 0
+          }));
+          await supabase.from('appointment_services').insert(servicesToInsert);
+        }
       } else {
-        const { error, data } = await supabase
+        // Novo agendamento
+        const { data, error } = await supabase
           .from('appointments')
           .insert([{ 
             client_id: clientId, 
@@ -360,9 +416,16 @@ export default function Appointments() {
           .select('id')
           .single();
         if (error) throw error;
-        appointmentId = data.id;
 
-        // Criar agendamentos futuros com base no número de semanas
+        const appointmentId = data.id;
+        const servicesToInsert = appointmentServices.map(serviceId => ({
+          appointment_id: appointmentId,
+          service_id: serviceId,
+          price: services.find(s => s.id === serviceId)?.price || 0,
+          final_price: 0
+        }));
+        await supabase.from('appointment_services').insert(servicesToInsert);
+
         if (recurrenceType === 'weekly' && recurrenceDays.length > 0) {
           const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
           const numWeeks = parseInt(recurrenceWeeks) || 4;
@@ -373,7 +436,7 @@ export default function Appointments() {
               const newStartDate = addDays(baseDate, diffDays - 7);
               const newEndDate = new Date(newStartDate.getTime() + totalDurationMinutes * 60000);
 
-              await supabase
+              const { data: newData, error: newError } = await supabase
                 .from('appointments')
                 .insert([{ 
                   client_id: clientId, 
@@ -382,21 +445,22 @@ export default function Appointments() {
                   status: 'scheduled', 
                   created_by: user?.id,
                   recurrence: recurrenceString 
-                }]);
+                }])
+                .select('id')
+                .single();
+              if (newError) throw newError;
+
+              const newServicesToInsert = appointmentServices.map(serviceId => ({
+                appointment_id: newData.id,
+                service_id: serviceId,
+                price: services.find(s => s.id === serviceId)?.price || 0,
+                final_price: 0
+              }));
+              await supabase.from('appointment_services').insert(newServicesToInsert);
             }
           }
         }
       }
-
-      await supabase.from('appointment_services').delete().eq('appointment_id', appointmentId);
-      const servicesToInsert = appointmentServices.map(serviceId => ({
-        appointment_id: appointmentId,
-        service_id: serviceId,
-        price: services.find(s => s.id === serviceId)?.price || 0,
-        final_price: 0
-      }));
-      const { error: servicesError } = await supabase.from('appointment_services').insert(servicesToInsert);
-      if (servicesError) throw servicesError;
 
       setSuccess('Agendamento salvo com sucesso!');
       handleCloseDialog();
@@ -514,14 +578,20 @@ export default function Appointments() {
     if (!currentAppointment) return;
     try {
       setLoading(true);
-      await supabase.from('appointment_services').delete().eq('appointment_id', currentAppointment.id);
-      const { error: appointmentError } = await supabase
-        .from('appointments')
-        .delete()
-        .eq('id', currentAppointment.id);
-      if (appointmentError) throw appointmentError;
+      if (currentAppointment.recurrence && deleteScope === 'all') {
+        // Excluir todos os agendamentos relacionados
+        const relatedAppointments = appointments.filter(a => a.recurrence === currentAppointment.recurrence);
+        for (const appt of relatedAppointments) {
+          await supabase.from('appointment_services').delete().eq('appointment_id', appt.id);
+          await supabase.from('appointments').delete().eq('id', appt.id);
+        }
+      } else {
+        // Excluir apenas o agendamento atual
+        await supabase.from('appointment_services').delete().eq('appointment_id', currentAppointment.id);
+        await supabase.from('appointments').delete().eq('id', currentAppointment.id);
+      }
 
-      setSuccess('Agendamento excluído com sucesso!');
+      setSuccess(`Agendamento${deleteScope === 'all' ? 's recorrentes' : ''} excluído${deleteScope === 'all' ? 's' : ''} com sucesso!`);
       handleCloseDeleteDialog();
       fetchData();
     } catch (error) {
@@ -801,7 +871,6 @@ export default function Appointments() {
               slotProps={{ textField: { fullWidth: true, sx: { mt: 2, borderRadius: 2 } } }}
             />
           </LocalizationProvider>
-          {/* Recorrência */}
           <Box sx={{ mt: 2 }}>
             <FormControl fullWidth>
               <InputLabel>Tipo de Recorrência</InputLabel>
@@ -992,12 +1061,30 @@ export default function Appointments() {
       <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
         <DialogTitle>Confirmar exclusão</DialogTitle>
         <DialogContent>
-          <DialogContentText>Tem certeza que deseja excluir este agendamento?</DialogContentText>
+          <DialogContentText>
+            {currentAppointment?.recurrence 
+              ? 'Deseja excluir apenas este agendamento ou todos os agendamentos recorrentes relacionados?'
+              : 'Tem certeza que deseja excluir este agendamento?'}
+          </DialogContentText>
           {currentAppointment && (
             <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
               <Typography>Cliente: {clients.find(c => c.id === currentAppointment.client_id)?.name || 'Desconhecido'}</Typography>
               <Typography>Data: {new Date(currentAppointment.start_time).toLocaleString('pt-BR')}</Typography>
+              {currentAppointment.recurrence && (
+                <Typography>Recorrência: {currentAppointment.recurrence.split('-')[1].replace(/,/g, ', ')} ({currentAppointment.recurrence.split('-')[2]} semanas)</Typography>
+              )}
             </Box>
+          )}
+          {currentAppointment?.recurrence && (
+            <FormControl component="fieldset" sx={{ mt: 2 }}>
+              <RadioGroup
+                value={deleteScope}
+                onChange={(e) => setDeleteScope(e.target.value as 'single' | 'all')}
+              >
+                <FormControlLabel value="single" control={<Radio />} label="Apenas este agendamento" />
+                <FormControlLabel value="all" control={<Radio />} label="Todos os agendamentos recorrentes" />
+              </RadioGroup>
+            </FormControl>
           )}
         </DialogContent>
         <DialogActions>
