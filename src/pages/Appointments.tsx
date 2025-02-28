@@ -27,7 +27,6 @@ import {
   ListItemText,
   InputLabel,
   FormControl,
-  Theme,
   Chip,
   Grid
 } from '@mui/material';
@@ -38,16 +37,28 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Delete as DeleteIcon,
-  Phone as PhoneIcon
+  Phone as PhoneIcon,
+  DateRange as DateRangeIcon
 } from '@mui/icons-material';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase'; // Supondo que o cliente Supabase esteja configurado
+import { useAuth } from '../context/AuthContext'; // Contexto de autenticação
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { ptBR } from 'date-fns/locale';
+import { 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  startOfDay, 
+  endOfDay, 
+  isWithinInterval, 
+  parseISO 
+} from 'date-fns';
 
-// Interfaces para os dados
+// Interfaces para tipagem dos dados
 interface Appointment {
   id: string;
   client_id: string;
@@ -80,17 +91,26 @@ interface Service {
 }
 
 export default function Appointments() {
+  // Estados principais
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const { user } = useAuth();
+
+  // Estados para os diálogos
   const [openDialog, setOpenDialog] = useState(false);
   const [openClientDialog, setOpenClientDialog] = useState(false);
   const [openServiceDialog, setOpenServiceDialog] = useState(false);
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
+
+  // Estados para formulários
   const [clientId, setClientId] = useState('');
   const [appointmentServices, setAppointmentServices] = useState<string[]>([]);
   const [appointmentDate, setAppointmentDate] = useState<Date | null>(new Date());
@@ -99,17 +119,19 @@ export default function Appointments() {
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('0');
   const [finalPrices, setFinalPrices] = useState<{[key: string]: string}>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const { user } = useAuth();
-  
-  // Search fields for modals
+
+  // Estados para filtros nos modais
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
 
+  // Estados para filtro de datas
+  const [startDate, setStartDate] = useState<Date | null>(startOfMonth(new Date()));
+  const [endDate, setEndDate] = useState<Date | null>(endOfMonth(new Date()));
+  const [dateRange, setDateRange] = useState('month');
+
+  // Carregar dados iniciais
   useEffect(() => {
     fetchData();
   }, []);
@@ -153,21 +175,43 @@ export default function Appointments() {
     }
   };
 
+  // Atualizar intervalo de datas baseado na seleção do usuário
+  useEffect(() => {
+    if (dateRange === 'day') {
+      setStartDate(startOfDay(new Date()));
+      setEndDate(endOfDay(new Date()));
+    } else if (dateRange === 'week') {
+      setStartDate(startOfWeek(new Date(), { weekStartsOn: 0 }));
+      setEndDate(endOfWeek(new Date(), { weekStartsOn: 0 }));
+    } else if (dateRange === 'month') {
+      setStartDate(startOfMonth(new Date()));
+      setEndDate(endOfMonth(new Date()));
+    }
+  }, [dateRange]);
+
+  // Função de filtragem
   const handleFilter = () => {
     let filtered = [...appointments];
-    
+
+    // Filtro por intervalo de datas
+    if (startDate && endDate) {
+      filtered = filtered.filter(appointment => {
+        try {
+          const appointmentDate = parseISO(appointment.start_time);
+          return isWithinInterval(appointmentDate, { start: startDate, end: endDate });
+        } catch (error) {
+          console.error('Erro ao filtrar por data:', error);
+          return false;
+        }
+      });
+    }
+
+    // Filtro por termo de busca
     if (searchTerm) {
       filtered = filtered.filter(appointment => {
         const client = clients.find(c => c.id === appointment.client_id);
         const serviceNames = appointment.appointment_services
-          .map(as => {
-            // Check if services property exists and has name
-            if (as.services && as.services.name) {
-              return as.services.name;
-            }
-            // Fallback to finding service by ID
-            return services.find(s => s.id === as.service_id)?.name || '';
-          })
+          .map(as => as.services?.name || services.find(s => s.id === as.service_id)?.name || '')
           .join(', ');
 
         return (
@@ -181,48 +225,43 @@ export default function Appointments() {
     setFilteredAppointments(filtered);
   };
 
-  // Filter clients in the client selection modal
+  useEffect(() => {
+    handleFilter();
+  }, [searchTerm, appointments, clients, services, startDate, endDate]);
+
+  // Filtrar clientes no modal
   const handleFilterClients = () => {
-    if (!clientSearchTerm) {
-      setFilteredClients(clients);
-      return;
-    }
-    
-    const filtered = clients.filter(client => 
-      client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
-      (client.phone && client.phone.includes(clientSearchTerm))
+    setFilteredClients(
+      clientSearchTerm
+        ? clients.filter(client => 
+            client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+            (client.phone && client.phone.includes(clientSearchTerm))
+          )
+        : clients
     );
-    
-    setFilteredClients(filtered);
   };
-  
-  // Filter services in the service selection modal
+
+  // Filtrar serviços no modal
   const handleFilterServices = () => {
-    if (!serviceSearchTerm) {
-      setFilteredServices(services);
-      return;
-    }
-    
-    const filtered = services.filter(service => 
-      service.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()) ||
-      service.price.toString().includes(serviceSearchTerm)
+    setFilteredServices(
+      serviceSearchTerm
+        ? services.filter(service => 
+            service.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()) ||
+            service.price.toString().includes(serviceSearchTerm)
+          )
+        : services
     );
-    
-    setFilteredServices(filtered);
   };
-  
+
   useEffect(() => {
     handleFilterClients();
   }, [clientSearchTerm, clients]);
-  
+
   useEffect(() => {
     handleFilterServices();
   }, [serviceSearchTerm, services]);
 
-  useEffect(() => {
-    handleFilter();
-  }, [searchTerm, appointments, clients, services]);
-
+  // Funções para manipulação de diálogos
   const handleOpenDialog = (appointment?: Appointment) => {
     if (appointment) {
       setCurrentAppointment(appointment);
@@ -248,32 +287,19 @@ export default function Appointments() {
     setServiceSearchTerm('');
   };
 
-  const handleCloseClientDialog = () => {
-    setOpenClientDialog(false);
-    setNewClientName('');
-    setNewClientPhone('');
-  };
-
-  const handleCloseServiceDialog = () => {
-    setOpenServiceDialog(false);
-    setNewServiceName('');
-    setNewServicePrice('0');
-  };
-
+  const handleCloseClientDialog = () => setOpenClientDialog(false);
+  const handleCloseServiceDialog = () => setOpenServiceDialog(false);
   const handleCloseCompleteDialog = () => {
     setOpenCompleteDialog(false);
     setFinalPrices({});
   };
-
   const handleOpenDeleteDialog = (appointment: Appointment) => {
     setCurrentAppointment(appointment);
     setOpenDeleteDialog(true);
   };
+  const handleCloseDeleteDialog = () => setOpenDeleteDialog(false);
 
-  const handleCloseDeleteDialog = () => {
-    setOpenDeleteDialog(false);
-  };
-
+  // Salvar agendamento
   const handleSaveAppointment = async () => {
     if (!clientId || appointmentServices.length === 0 || !appointmentDate) {
       setError('Todos os campos são obrigatórios');
@@ -281,13 +307,10 @@ export default function Appointments() {
     }
 
     try {
-      let appointmentId: string;
-
-      // Calcular end_time (30 minutos por serviço)
       const totalDurationMinutes = appointmentServices.length * 30;
-
       const startDate = new Date(appointmentDate);
       const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
+      let appointmentId: string;
 
       if (currentAppointment) {
         const { error, data } = await supabase
@@ -320,25 +343,16 @@ export default function Appointments() {
         appointmentId = data.id;
       }
 
-      await supabase
-        .from('appointment_services')
-        .delete()
-        .eq('appointment_id', appointmentId);
+      await supabase.from('appointment_services').delete().eq('appointment_id', appointmentId);
 
-      const servicesToInsert = appointmentServices.map(serviceId => {
-        const service = services.find(s => s.id === serviceId);
-        return {
-          appointment_id: appointmentId,
-          service_id: serviceId,
-          price: service?.price || 0,
-          final_price: 0
-        };
-      });
+      const servicesToInsert = appointmentServices.map(serviceId => ({
+        appointment_id: appointmentId,
+        service_id: serviceId,
+        price: services.find(s => s.id === serviceId)?.price || 0,
+        final_price: 0
+      }));
 
-      const { error: servicesError } = await supabase
-        .from('appointment_services')
-        .insert(servicesToInsert);
-
+      const { error: servicesError } = await supabase.from('appointment_services').insert(servicesToInsert);
       if (servicesError) throw servicesError;
 
       setSuccess('Agendamento salvo com sucesso!');
@@ -350,6 +364,7 @@ export default function Appointments() {
     }
   };
 
+  // Salvar novo cliente
   const handleSaveNewClient = async () => {
     if (!newClientName) {
       setError('Nome é obrigatório');
@@ -359,11 +374,7 @@ export default function Appointments() {
     try {
       const { error, data } = await supabase
         .from('clients')
-        .insert([{ 
-          name: newClientName, 
-          phone: newClientPhone || null, 
-          created_by: user?.id 
-        }])
+        .insert([{ name: newClientName, phone: newClientPhone || null, created_by: user?.id }])
         .select('id, name, phone')
         .single();
 
@@ -379,6 +390,7 @@ export default function Appointments() {
     }
   };
 
+  // Salvar novo serviço
   const handleSaveNewService = async () => {
     if (!newServiceName || !newServicePrice) {
       setError('Todos os campos são obrigatórios');
@@ -393,11 +405,7 @@ export default function Appointments() {
     try {
       const { error, data } = await supabase
         .from('services')
-        .insert([{ 
-          name: newServiceName, 
-          price: Number(newServicePrice),
-          created_by: user?.id 
-        }])
+        .insert([{ name: newServiceName, price: Number(newServicePrice), created_by: user?.id }])
         .select('id, name, price')
         .single();
 
@@ -413,60 +421,38 @@ export default function Appointments() {
     }
   };
 
-  const handleAddNewClient = () => {
-    setOpenClientDialog(true);
-  };
-
-  const handleAddNewService = () => {
-    setOpenServiceDialog(true);
-  };
-
+  // Finalizar agendamento
   const handleCompleteAppointment = (appointment: Appointment) => {
     setCurrentAppointment(appointment);
-    
-    // Initialize final prices with the original prices
     const initialPrices: {[key: string]: string} = {};
     appointment.appointment_services.forEach(service => {
       initialPrices[service.id] = service.price.toString();
     });
-    
     setFinalPrices(initialPrices);
     setOpenCompleteDialog(true);
   };
 
   const handleSaveCompletedAppointment = async () => {
     if (!currentAppointment) return;
-    
+
     try {
-      // Calculate total final price
-      const totalFinalPrice = Object.values(finalPrices).reduce(
-        (sum, price) => sum + (Number(price) || 0), 
-        0
-      );
-      
-      // Update appointment status and final price
+      const totalFinalPrice = Object.values(finalPrices).reduce((sum, price) => sum + (Number(price) || 0), 0);
       const { error: appointmentError } = await supabase
         .from('appointments')
-        .update({ 
-          status: 'completed',
-          final_price: totalFinalPrice
-        })
+        .update({ status: 'completed', final_price: totalFinalPrice })
         .eq('id', currentAppointment.id);
-      
+
       if (appointmentError) throw appointmentError;
-      
-      // Update each service's final price
+
       for (const serviceId in finalPrices) {
         const { error: serviceError } = await supabase
           .from('appointment_services')
-          .update({ 
-            final_price: Number(finalPrices[serviceId]) || 0
-          })
+          .update({ final_price: Number(finalPrices[serviceId]) || 0 })
           .eq('id', serviceId);
-        
+
         if (serviceError) throw serviceError;
       }
-      
+
       setSuccess('Agendamento finalizado com sucesso!');
       handleCloseCompleteDialog();
       fetchData();
@@ -476,15 +462,16 @@ export default function Appointments() {
     }
   };
 
+  // Cancelar agendamento
   const handleCancelAppointment = async (appointmentId: string) => {
     try {
       const { error } = await supabase
         .from('appointments')
         .update({ status: 'cancelled' })
         .eq('id', appointmentId);
-      
+
       if (error) throw error;
-      
+
       setSuccess('Agendamento cancelado com sucesso!');
       fetchData();
     } catch (error) {
@@ -493,39 +480,20 @@ export default function Appointments() {
     }
   };
 
+  // Excluir agendamento
   const handleDeleteAppointment = async () => {
     if (!currentAppointment) return;
-    
+
     try {
       setLoading(true);
-      
-      // First delete related financial transactions
-      const { error: transactionError } = await supabase
-        .from('financial_transactions')
-        .delete()
-        .eq('related_appointment_id', currentAppointment.id);
-      
-      if (transactionError) {
-        console.error('Erro ao excluir transação financeira:', transactionError);
-        // Continue even if transaction deletion fails
-      }
-      
-      // Then delete appointment services
-      const { error: servicesError } = await supabase
-        .from('appointment_services')
-        .delete()
-        .eq('appointment_id', currentAppointment.id);
-        
-      if (servicesError) throw servicesError;
-      
-      // Finally delete the appointment
+      await supabase.from('appointment_services').delete().eq('appointment_id', currentAppointment.id);
       const { error: appointmentError } = await supabase
         .from('appointments')
         .delete()
         .eq('id', currentAppointment.id);
-        
+
       if (appointmentError) throw appointmentError;
-      
+
       setSuccess('Agendamento excluído com sucesso!');
       handleCloseDeleteDialog();
       fetchData();
@@ -537,44 +505,31 @@ export default function Appointments() {
     }
   };
 
+  // Formatação de status
   const getStatusChip = (status: string) => {
     switch (status) {
-      case 'scheduled':
-        return <Chip label="Agendado" color="primary" size="small" />;
-      case 'completed':
-        return <Chip label="Concluído" color="success" size="small" />;
-      case 'cancelled':
-        return <Chip label="Cancelado" color="error" size="small" />;
-      default:
-        return <Chip label={status} size="small" />;
+      case 'scheduled': return <Chip label="Agendado" color="primary" size="small" />;
+      case 'completed': return <Chip label="Concluído" color="success" size="small" />;
+      case 'cancelled': return <Chip label="Cancelado" color="error" size="small" />;
+      default: return <Chip label={status} size="small" />;
     }
   };
 
-  // Phone mask function
+  // Máscara de telefone
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
-    
+    let value = e.target.value.replace(/\D/g, '');
     if (value.length <= 11) {
-      // Format as (XX) X XXXX-XXXX
-      if (value.length > 0) {
-        value = value.replace(/^(\d{2})(\d)/g, '($1) $2');
-      }
-      if (value.length > 4) {
-        value = value.replace(/(\) \d)(\d{4})(\d)/, '$1 $2-$3');
-      }
+      value = value.replace(/^(\d{2})(\d)/g, '($1) $2');
+      if (value.length > 4) value = value.replace(/(\) \d)(\d{4})(\d)/, '$1 $2-$3');
       setNewClientPhone(value);
     }
   };
 
   const formatPhoneDisplay = (phone: string) => {
     if (!phone) return '';
-    
     const digits = phone.replace(/\D/g, '');
-    if (digits.length === 11) {
-      return `(${digits.substring(0, 2)}) ${digits.substring(2, 3)} ${digits.substring(3, 7)}-${digits.substring(7)}`;
-    } else if (digits.length === 10) {
-      return `(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}`;
-    }
+    if (digits.length === 11) return `(${digits.substring(0, 2)}) ${digits.substring(2, 3)} ${digits.substring(3, 7)}-${digits.substring(7)}`;
+    if (digits.length === 10) return `(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}`;
     return phone;
   };
 
@@ -590,9 +545,7 @@ export default function Appointments() {
     <Box>
       {/* Cabeçalho */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>
-          Agendamentos
-        </Typography>
+        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>Agendamentos</Typography>
         <Button 
           variant="contained" 
           startIcon={<AddIcon />}
@@ -602,11 +555,10 @@ export default function Appointments() {
           Novo Agendamento
         </Button>
       </Box>
-      
+
       {/* Filtros */}
-      <Paper sx={{ p: 2, mb: 3, borderRadius: 2, boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)' }}>
+      <Paper sx={{ p: 2, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
         <TextField
-          fullWidth
           variant="outlined"
           placeholder="Buscar por nome, telefone, serviço ou status..."
           value={searchTerm}
@@ -618,26 +570,48 @@ export default function Appointments() {
               </InputAdornment>
             ),
           }}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 2,
-              backgroundColor: '#fff',
-              '&:hover': {
-                backgroundColor: '#f5f5f5',
-              },
-              '&.Mui-focused': {
-                boxShadow: '0px 0px 0px 2px rgba(0, 0, 0, 0.1)',
-              },
-            },
-            '& .MuiInputBase-input': {
-              padding: '10px 14px',
-              color: 'text.secondary',
-            },
-          }}
+          sx={{ minWidth: 300 }}
         />
+        <TextField
+          select
+          label="Período"
+          value={dateRange}
+          onChange={(e) => setDateRange(e.target.value)}
+          sx={{ minWidth: 150 }}
+        >
+          <MenuItem value="day">Hoje</MenuItem>
+          <MenuItem value="week">Esta Semana</MenuItem>
+          <MenuItem value="month">Este Mês</MenuItem>
+          <MenuItem value="custom">Personalizado</MenuItem>
+        </TextField>
+
+        {dateRange === 'custom' && (
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+            <DatePicker 
+              label="Data Inicial"
+              value={startDate}
+              onChange={(newValue) => setStartDate(newValue)}
+              slotProps={{ textField: { size: 'small' } }}
+            />
+            <DatePicker 
+              label="Data Final"
+              value={endDate}
+              onChange={(newValue) => setEndDate(newValue)}
+              slotProps={{ textField: { size: 'small' } }}
+            />
+          </LocalizationProvider>
+        )}
+
+        <Button 
+          variant="outlined" 
+          onClick={fetchData}
+          startIcon={<DateRangeIcon />}
+        >
+          Atualizar
+        </Button>
       </Paper>
-      
-      {/* Tabela de agendamentos */}
+
+      {/* Tabela */}
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -663,20 +637,16 @@ export default function Appointments() {
                         {formatPhoneDisplay(client.phone)}
                       </Box>
                     ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        Não informado
-                      </Typography>
+                      <Typography variant="body2" color="text.secondary">Não informado</Typography>
                     )}
                   </TableCell>
                   <TableCell>
                     {appointment.appointment_services.map(as => 
-                      as.services?.name || services.find(service => service.id === as.service_id)?.name
+                      as.services?.name || services.find(s => s.id === as.service_id)?.name || ''
                     ).join(', ')}
                   </TableCell>
                   <TableCell>{new Date(appointment.start_time).toLocaleString('pt-BR')}</TableCell>
-                  <TableCell>
-                    {getStatusChip(appointment.status)}
-                  </TableCell>
+                  <TableCell>{getStatusChip(appointment.status)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                       {appointment.status === 'scheduled' && (
@@ -686,7 +656,6 @@ export default function Appointments() {
                             onClick={() => handleCompleteAppointment(appointment)}
                             size="small"
                             sx={{ mr: 1 }}
-                            title="Finalizar agendamento"
                           >
                             <CheckCircleIcon />
                           </IconButton>
@@ -695,7 +664,6 @@ export default function Appointments() {
                             onClick={() => handleCancelAppointment(appointment.id)}
                             size="small"
                             sx={{ mr: 1 }}
-                            title="Cancelar agendamento"
                           >
                             <CancelIcon />
                           </IconButton>
@@ -706,7 +674,6 @@ export default function Appointments() {
                         onClick={() => handleOpenDialog(appointment)}
                         size="small"
                         sx={{ mr: 1 }}
-                        title="Editar agendamento"
                       >
                         <EditIcon />
                       </IconButton>
@@ -714,7 +681,6 @@ export default function Appointments() {
                         color="error" 
                         onClick={() => handleOpenDeleteDialog(appointment)}
                         size="small"
-                        title="Excluir agendamento"
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -726,62 +692,36 @@ export default function Appointments() {
           </TableBody>
         </Table>
       </TableContainer>
-      
+
       {/* Modal de agendamento */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{currentAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel id="client-label">Cliente</InputLabel>
+            <InputLabel>Cliente</InputLabel>
             <Select
-              labelId="client-label"
               value={clientId}
               onChange={(e) => setClientId(e.target.value as string)}
               label="Cliente"
-              sx={(theme: Theme) => ({
-                borderRadius: 16,
-                '& .MuiOutlinedInput-root': {
-                  border: `2px solid ${theme.palette.primary.main}`,
-                  '&:hover': {
-                    borderColor: theme.palette.primary.dark,
-                  },
-                  '&.Mui-focused': {
-                    borderColor: theme.palette.primary.dark,
-                  },
-                },
-              })}
             >
-              {/* Add search field inside the Select */}
               <MenuItem value="" disabled>
                 <TextField
                   size="small"
                   fullWidth
                   placeholder="Buscar cliente..."
                   value={clientSearchTerm}
-                  onChange={(e) => {
-                    e.stopPropagation(); // Prevent closing the dropdown
-                    setClientSearchTerm(e.target.value);
-                  }}
-                  onClick={(e) => e.stopPropagation()} // Prevent closing the dropdown
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
+                  onChange={(e) => { e.stopPropagation(); setClientSearchTerm(e.target.value); }}
+                  onClick={(e) => e.stopPropagation()}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
                   sx={{ mb: 1 }}
                 />
               </MenuItem>
-              
               {filteredClients.map(client => (
                 <MenuItem key={client.id} value={client.id}>
                   <Box>
                     <Typography variant="body1">{client.name}</Typography>
                     {client.phone && (
-                      <Typography variant="caption" color="text.secondary">
-                        {formatPhoneDisplay(client.phone)}
-                      </Typography>
+                      <Typography variant="caption" color="text.secondary">{formatPhoneDisplay(client.phone)}</Typography>
                     )}
                   </Box>
                 </MenuItem>
@@ -789,48 +729,30 @@ export default function Appointments() {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel id="services-label">Serviços</InputLabel>
+            <InputLabel>Serviços</InputLabel>
             <Select
-              labelId="services-label"
               multiple
               value={appointmentServices}
               onChange={(e) => setAppointmentServices(e.target.value as string[])}
-              renderValue={(selected) => 
-                selected.map(id => services.find(service => service.id === id)?.name).join(', ')
-              }
+              renderValue={(selected) => selected.map(id => services.find(s => s.id === id)?.name).join(', ')}
               label="Serviços"
-              sx={{ borderRadius: 16 }}
             >
-              {/* Add search field inside the Select */}
               <MenuItem value="" disabled>
                 <TextField
                   size="small"
                   fullWidth
                   placeholder="Buscar serviço..."
                   value={serviceSearchTerm}
-                  onChange={(e) => {
-                    e.stopPropagation(); // Prevent closing the dropdown
-                    setServiceSearchTerm(e.target.value);
-                  }}
-                  onClick={(e) => e.stopPropagation()} // Prevent closing the dropdown
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
+                  onChange={(e) => { e.stopPropagation(); setServiceSearchTerm(e.target.value); }}
+                  onClick={(e) => e.stopPropagation()}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
                   sx={{ mb: 1 }}
                 />
               </MenuItem>
-              
               {filteredServices.map(service => (
                 <MenuItem key={service.id} value={service.id}>
                   <Checkbox checked={appointmentServices.includes(service.id)} />
-                  <ListItemText 
-                    primary={service.name} 
-                    secondary={`R$ ${service.price.toFixed(2)}`} 
-                  />
+                  <ListItemText primary={service.name} secondary={`R$ ${service.price.toFixed(2)}`} />
                 </MenuItem>
               ))}
             </Select>
@@ -839,65 +761,22 @@ export default function Appointments() {
             <DateTimePicker
               label="Data e Hora"
               value={appointmentDate}
-              onChange={(newValue: Date | null) => setAppointmentDate(newValue)}
-              slotProps={{
-                textField: {
-                  fullWidth: true,
-                  sx: { 
-                    mt: 2, 
-                    borderRadius: 16,
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 16,
-                    },
-                  },
-                },
-              }}
+              onChange={(newValue) => setAppointmentDate(newValue)}
+              slotProps={{ textField: { fullWidth: true, sx: { mt: 2 } } }}
             />
           </LocalizationProvider>
         </DialogContent>
         <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
-          <Button onClick={handleCloseDialog} sx={{ color: 'text.secondary' }}>
-            Cancelar
-          </Button>
+          <Button onClick={handleCloseDialog}>Cancelar</Button>
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button 
-              onClick={handleAddNewClient} 
-              variant="contained" 
-              sx={{ 
-                backgroundColor: '#c8e6c9',
-                '&:hover': { backgroundColor: '#a5d6a7' },
-                borderRadius: 16,
-              }}
-            >
-              Adicionar Novo Cliente
-            </Button>
-            <Button 
-              onClick={handleAddNewService} 
-              variant="contained" 
-              sx={{ 
-                backgroundColor: '#b3e5fc',
-                '&:hover': { backgroundColor: '#90caf9' },
-                borderRadius: 16,
-              }}
-            >
-              Adicionar Novo Serviço
-            </Button>
-            <Button 
-              onClick={handleSaveAppointment} 
-              variant="contained" 
-              sx={{ 
-                backgroundColor: 'primary.main', 
-                '&:hover': { backgroundColor: 'primary.dark' },
-                borderRadius: 16,
-              }}
-            >
-              Salvar
-            </Button>
+            <Button onClick={() => setOpenClientDialog(true)} variant="contained">Adicionar Novo Cliente</Button>
+            <Button onClick={() => setOpenServiceDialog(true)} variant="contained">Adicionar Novo Serviço</Button>
+            <Button onClick={handleSaveAppointment} variant="contained" color="primary">Salvar</Button>
           </Box>
         </DialogActions>
       </Dialog>
-      
-      {/* Modal para adicionar novo cliente */}
+
+      {/* Modal novo cliente */}
       <Dialog open={openClientDialog} onClose={handleCloseClientDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Adicionar Novo Cliente</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -905,52 +784,27 @@ export default function Appointments() {
             autoFocus
             margin="dense"
             label="Nome"
-            type="text"
             fullWidth
-            variant="outlined"
             value={newClientName}
             onChange={(e) => setNewClientName(e.target.value)}
             required
-            sx={{ mb: 2, borderRadius: 16 }}
           />
           <TextField
             margin="dense"
             label="Telefone"
-            type="tel"
             fullWidth
-            variant="outlined"
             value={newClientPhone}
             onChange={handlePhoneChange}
             placeholder="(00) 0 0000-0000"
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <PhoneIcon fontSize="small" color="action" />
-                </InputAdornment>
-              ),
-            }}
-            sx={{ borderRadius: 16 }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
-          <Button onClick={handleCloseClientDialog} sx={{ color: 'text.secondary' }}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSaveNewClient} 
-            variant="contained" 
-            sx={{ 
-              backgroundColor: 'primary.main', 
-              '&:hover': { backgroundColor: 'primary.dark' },
-              borderRadius: 16,
-            }}
-          >
-            Salvar
-          </Button>
+        <DialogActions>
+          <Button onClick={handleCloseClientDialog}>Cancelar</Button>
+          <Button onClick={handleSaveNewClient} variant="contained">Salvar</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Modal para adicionar novo serviço */}
+      {/* Modal novo serviço */}
       <Dialog open={openServiceDialog} onClose={handleCloseServiceDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Adicionar Novo Serviço</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -958,172 +812,85 @@ export default function Appointments() {
             autoFocus
             margin="dense"
             label="Nome do Serviço"
-            type="text"
             fullWidth
-            variant="outlined"
             value={newServiceName}
             onChange={(e) => setNewServiceName(e.target.value)}
             required
-            sx={{ mb: 2, borderRadius: 16 }}
           />
           <TextField
             margin="dense"
             label="Preço"
             type="number"
             fullWidth
-            variant="outlined"
             value={newServicePrice}
             onChange={(e) => setNewServicePrice(e.target.value)}
-            InputProps={{
-              startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-            }}
-            sx={{ borderRadius: 16 }}
+            InputProps={{ startAdornment: <InputAdornment position="start">R$</InputAdornment> }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
-          <Button onClick={handleCloseServiceDialog} sx={{ color: 'text.secondary' }}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSaveNewService} 
-            variant="contained" 
-            sx={{ 
-              backgroundColor: 'primary.main', 
-              '&:hover': { backgroundColor: 'primary.dark' },
-              borderRadius: 16,
-            }}
-          >
-            Salvar
-          </Button>
+        <DialogActions>
+          <Button onClick={handleCloseServiceDialog}>Cancelar</Button>
+          <Button onClick={handleSaveNewService} variant="contained">Salvar</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Modal para finalizar agendamento */}
+      {/* Modal finalizar agendamento */}
       <Dialog open={openCompleteDialog} onClose={handleCloseCompleteDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Finalizar Agendamento</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
-          <Typography variant="subtitle1" sx={{ mb: 2 }}>
-            Informe o valor final de cada serviço:
-          </Typography>
-          
-          {currentAppointment?.appointment_services.map(service => {
-            const serviceName = service.services?.name || 
-              services.find(s => s.id === service.service_id)?.name || 'Serviço';
-            return (
-              <Box key={service.id} sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {serviceName}
-                </Typography>
-                <TextField
-                  fullWidth
-                  label="Valor Final"
-                  type="number"
-                  variant="outlined"
-                  value={finalPrices[service.id] || ''}
-                  onChange={(e) => setFinalPrices({
-                    ...finalPrices,
-                    [service.id]: e.target.value
-                  })}
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-                  }}
-                  size="small"
-                />
-              </Box>
-            );
-          })}
-          
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>Informe o valor final de cada serviço:</Typography>
+          {currentAppointment?.appointment_services.map(service => (
+            <Box key={service.id} sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {service.services?.name || services.find(s => s.id === service.service_id)?.name || 'Serviço'}
+              </Typography>
+              <TextField
+                fullWidth
+                label="Valor Final"
+                type="number"
+                value={finalPrices[service.id] || ''}
+                onChange={(e) => setFinalPrices({ ...finalPrices, [service.id]: e.target.value })}
+                InputProps={{ startAdornment: <InputAdornment position="start">R$</InputAdornment> }}
+                size="small"
+              />
+            </Box>
+          ))}
           <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
             <Typography variant="subtitle1">
-              Valor Total: R$ {
-                Object.values(finalPrices)
-                  .reduce((sum, price) => sum + (Number(price) || 0), 0)
-                  .toFixed(2)
-              }
+              Valor Total: R$ {Object.values(finalPrices).reduce((sum, price) => sum + (Number(price) || 0), 0).toFixed(2)}
             </Typography>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
-          <Button onClick={handleCloseCompleteDialog} sx={{ color: 'text.secondary' }}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSaveCompletedAppointment} 
-            variant="contained" 
-            color="success"
-            sx={{ borderRadius: 16 }}
-          >
-            Finalizar Agendamento
-          </Button>
+        <DialogActions>
+          <Button onClick={handleCloseCompleteDialog}>Cancelar</Button>
+          <Button onClick={handleSaveCompletedAppointment} variant="contained" color="success">Finalizar</Button>
         </DialogActions>
       </Dialog>
-      
-      {/* Modal de confirmação de exclusão */}
-      <Dialog
-        open={openDeleteDialog}
-        onClose={handleCloseDeleteDialog}
-        aria-labelledby="alert-dialog-title"
-        aria-describedby="alert-dialog-description"
-      >
-        <DialogTitle id="alert-dialog-title">
-          Confirmar exclusão
-        </DialogTitle>
+
+      {/* Modal excluir agendamento */}
+      <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
+        <DialogTitle>Confirmar exclusão</DialogTitle>
         <DialogContent>
-          <DialogContentText id="alert-dialog-description">
-            Tem certeza que deseja excluir este agendamento? Esta ação não pode ser desfeita e também removerá a transação financeira associada, se existir.
-          </DialogContentText>
+          <DialogContentText>Tem certeza que deseja excluir este agendamento? Esta ação não pode be desfeita.</DialogContentText>
           {currentAppointment && (
             <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Agendamento de {new Date(currentAppointment.start_time).toLocaleString('pt-BR')}
-              </Typography>
-              <Typography variant="body2">
-                Cliente: {clients.find(c => c.id === currentAppointment.client_id)?.name || 'Desconhecido'}
-              </Typography>
-              <Typography variant="body2">
-                Status: {currentAppointment.status}
-              </Typography>
-              <Typography variant="body2">
-                Serviços: {currentAppointment.appointment_services.map(as => 
-                  as.services?.name || services.find(s => s.id === as.service_id)?.name
-                ).join(', ')}
-              </Typography>
+              <Typography>Cliente: {clients.find(c => c.id === currentAppointment.client_id)?.name || 'Desconhecido'}</Typography>
+              <Typography>Data: {new Date(currentAppointment.start_time).toLocaleString('pt-BR')}</Typography>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDeleteDialog} color="primary">
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleDeleteAppointment} 
-            color="error" 
-            variant="contained" 
-            autoFocus
-            disabled={loading}
-          >
+          <Button onClick={handleCloseDeleteDialog}>Cancelar</Button>
+          <Button onClick={handleDeleteAppointment} color="error" variant="contained" disabled={loading}>
             {loading ? 'Excluindo...' : 'Excluir'}
           </Button>
         </DialogActions>
       </Dialog>
-      
-      {/* Notificação de erro */}
-      <Snackbar 
-        open={!!error} 
-        autoHideDuration={6000} 
-        onClose={() => setError('')}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
+
+      {/* Notificações */}
+      <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError('')}>
         <Alert onClose={() => setError('')} severity="error">{error}</Alert>
       </Snackbar>
-      
-      {/* Notificação de sucesso */}
-      <Snackbar 
-        open={!!success} 
-        autoHideDuration={6000} 
-        onClose={() => setSuccess('')}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
+      <Snackbar open={!!success} autoHideDuration={6000} onClose={() => setSuccess('')}>
         <Alert onClose={() => setSuccess('')} severity="success">{success}</Alert>
       </Snackbar>
     </Box>
