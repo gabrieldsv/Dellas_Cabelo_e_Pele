@@ -64,7 +64,6 @@ import {
   getDay,
   format,
   differenceInWeeks,
-  setDay,
 } from 'date-fns';
 
 // Interfaces
@@ -83,7 +82,7 @@ interface Appointment {
     services?: { name: string };
   }[];
   created_by: string;
-  recurrence?: string; // Exemplo: "weekly-tue,thu-8"
+  recurrence?: string;
 }
 
 interface Client {
@@ -115,7 +114,7 @@ export default function Appointments() {
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
-  const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single'); // Novo estado para escopo de exclusão
+  const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
 
   const [clientId, setClientId] = useState('');
   const [appointmentServices, setAppointmentServices] = useState<string[]>([]);
@@ -274,7 +273,9 @@ export default function Appointments() {
     if (appointment) {
       setCurrentAppointment(appointment);
       setClientId(appointment.client_id);
-      setAppointmentServices(appointment.appointment_services.map(as => as.service_id));
+      const initialServices = [...appointment.appointment_services.map(as => as.service_id)];
+      console.log('Serviços iniciais ao editar:', initialServices);
+      setAppointmentServices(initialServices);
       setAppointmentDate(new Date(appointment.start_time));
       if (appointment.recurrence) {
         const [type, days, weeks] = appointment.recurrence.split('-');
@@ -335,42 +336,84 @@ export default function Appointments() {
         ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}` 
         : null;
 
+      const uniqueServices = [...new Set(appointmentServices)];
+      console.log('Serviços únicos a serem salvos:', uniqueServices);
+
+      const updateServicesForAppointment = async (appointmentId: string) => {
+        // Buscar serviços existentes no banco para o agendamento
+        const { data: existingServices, error: fetchError } = await supabase
+          .from('appointment_services')
+          .select('id, service_id')
+          .eq('appointment_id', appointmentId);
+        if (fetchError) throw fetchError;
+
+        const existingServiceIds = existingServices.map(s => s.service_id);
+        const existingServiceRecords = existingServices.map(s => ({ id: s.id, service_id: s.service_id }));
+
+        // Identificar serviços a remover (os que estavam no banco mas não estão mais em uniqueServices)
+        const servicesToRemove = existingServiceRecords.filter(s => !uniqueServices.includes(s.service_id));
+        if (servicesToRemove.length > 0) {
+          console.log('Serviços a remover:', servicesToRemove);
+          const { error: deleteError } = await supabase
+            .from('appointment_services')
+            .delete()
+            .in('id', servicesToRemove.map(s => s.id));
+          if (deleteError) throw deleteError;
+        }
+
+        // Identificar serviços a adicionar (os que estão em uniqueServices mas não no banco)
+        const servicesToAdd = uniqueServices.filter(serviceId => !existingServiceIds.includes(serviceId));
+        if (servicesToAdd.length > 0) {
+          const servicesToInsert = servicesToAdd.map(serviceId => ({
+            appointment_id: appointmentId,
+            service_id: serviceId,
+            price: services.find(s => s.id === serviceId)?.price || 0,
+            final_price: 0
+          }));
+          console.log('Serviços a inserir:', servicesToInsert);
+          const { error: insertError } = await supabase
+            .from('appointment_services')
+            .insert(servicesToInsert);
+          if (insertError) throw insertError;
+        }
+      };
+
       if (currentAppointment) {
-        // Atualizar todos os agendamentos recorrentes relacionados
         if (currentAppointment.recurrence) {
+          // Excluir todos os agendamentos recorrentes e recriá-los
           const relatedAppointments = appointments.filter(a => a.recurrence === currentAppointment.recurrence);
+          console.log('Agendamentos relacionados a excluir:', relatedAppointments.length);
           
-          // Excluir serviços antigos e agendamentos relacionados
           for (const appt of relatedAppointments) {
-            await supabase.from('appointment_services').delete().eq('appointment_id', appt.id);
-            await supabase.from('appointments').delete().eq('id', appt.id);
+            const { error: deleteServicesError } = await supabase
+              .from('appointment_services')
+              .delete()
+              .eq('appointment_id', appt.id);
+            if (deleteServicesError) throw deleteServicesError;
+
+            const { error: deleteAppointmentError } = await supabase
+              .from('appointments')
+              .delete()
+              .eq('id', appt.id);
+            if (deleteAppointmentError) throw deleteAppointmentError;
           }
 
-          // Recriar agendamentos com os novos dados
           const numWeeks = parseInt(recurrenceWeeks) || 4;
           const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
           
-          // Criar um agendamento para cada dia selecionado em cada semana
           for (const day of recurrenceDays) {
             const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
-            
-            // Calcular a data do primeiro agendamento para este dia da semana
-            // Ajustamos a data base para o dia da semana selecionado
             const firstDate = new Date(startDate);
             const currentDay = getDay(firstDate);
             const daysToAdd = (dayNumber - currentDay + 7) % 7;
             
-            // Criar agendamentos para cada semana
             for (let week = 0; week < numWeeks; week++) {
-              // Calcular a data para esta semana
               const appointmentDate = addWeeks(
                 daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), 
                 week
               );
-              
               const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
               
-              // Criar o agendamento
               const { data, error } = await supabase
                 .from('appointments')
                 .insert([{ 
@@ -385,20 +428,23 @@ export default function Appointments() {
                 .single();
               
               if (error) throw error;
+              console.log('Novo agendamento criado (recorrente):', data.id);
 
-              // Adicionar serviços ao agendamento
-              const servicesToInsert = appointmentServices.map(serviceId => ({
+              const servicesToInsert = uniqueServices.map(serviceId => ({
                 appointment_id: data.id,
                 service_id: serviceId,
                 price: services.find(s => s.id === serviceId)?.price || 0,
                 final_price: 0
               }));
-              
-              await supabase.from('appointment_services').insert(servicesToInsert);
+              console.log('Serviços a inserir (recorrente):', servicesToInsert);
+              const { error: insertError } = await supabase
+                .from('appointment_services')
+                .insert(servicesToInsert);
+              if (insertError) throw insertError;
             }
           }
         } else {
-          // Atualizar apenas o agendamento atual (não recorrente)
+          // Atualizar agendamento único
           const { data, error } = await supabase
             .from('appointments')
             .update({ 
@@ -412,43 +458,26 @@ export default function Appointments() {
             .single();
           if (error) throw error;
 
-          await supabase.from('appointment_services').delete().eq('appointment_id', data.id);
-          const servicesToInsert = appointmentServices.map(serviceId => ({
-            appointment_id: data.id,
-            service_id: serviceId,
-            price: services.find(s => s.id === serviceId)?.price || 0,
-            final_price: 0
-          }));
-          await supabase.from('appointment_services').insert(servicesToInsert);
+          await updateServicesForAppointment(data.id);
         }
       } else {
-        // Novo agendamento
         if (recurrenceType === 'weekly' && recurrenceDays.length > 0) {
-          // Criar agendamentos recorrentes
           const numWeeks = parseInt(recurrenceWeeks) || 4;
           const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
           
-          // Criar um agendamento para cada dia selecionado em cada semana
           for (const day of recurrenceDays) {
             const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
-            
-            // Calcular a data do primeiro agendamento para este dia da semana
-            // Ajustamos a data base para o dia da semana selecionado
             const firstDate = new Date(startDate);
             const currentDay = getDay(firstDate);
             const daysToAdd = (dayNumber - currentDay + 7) % 7;
             
-            // Criar agendamentos para cada semana
             for (let week = 0; week < numWeeks; week++) {
-              // Calcular a data para esta semana
               const appointmentDate = addWeeks(
                 daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), 
                 week
               );
-              
               const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
               
-              // Criar o agendamento
               const { data, error } = await supabase
                 .from('appointments')
                 .insert([{ 
@@ -463,20 +492,22 @@ export default function Appointments() {
                 .single();
               
               if (error) throw error;
+              console.log('Novo agendamento criado (recorrente):', data.id);
 
-              // Adicionar serviços ao agendamento
-              const servicesToInsert = appointmentServices.map(serviceId => ({
+              const servicesToInsert = uniqueServices.map(serviceId => ({
                 appointment_id: data.id,
                 service_id: serviceId,
                 price: services.find(s => s.id === serviceId)?.price || 0,
                 final_price: 0
               }));
-              
-              await supabase.from('appointment_services').insert(servicesToInsert);
+              console.log('Serviços a inserir (recorrente):', servicesToInsert);
+              const { error: insertError } = await supabase
+                .from('appointment_services')
+                .insert(servicesToInsert);
+              if (insertError) throw insertError;
             }
           }
         } else {
-          // Agendamento único (não recorrente)
           const { data, error } = await supabase
             .from('appointments')
             .insert([{ 
@@ -490,15 +521,19 @@ export default function Appointments() {
             .select('id')
             .single();
           if (error) throw error;
+          console.log('Novo agendamento único criado:', data.id);
 
-          const appointmentId = data.id;
-          const servicesToInsert = appointmentServices.map(serviceId => ({
-            appointment_id: appointmentId,
+          const servicesToInsert = uniqueServices.map(serviceId => ({
+            appointment_id: data.id,
             service_id: serviceId,
             price: services.find(s => s.id === serviceId)?.price || 0,
             final_price: 0
           }));
-          await supabase.from('appointment_services').insert(servicesToInsert);
+          console.log('Serviços a inserir (novo):', servicesToInsert);
+          const { error: insertError } = await supabase
+            .from('appointment_services')
+            .insert(servicesToInsert);
+          if (insertError) throw insertError;
         }
       }
 
@@ -507,7 +542,7 @@ export default function Appointments() {
       fetchData();
     } catch (error) {
       setError('Erro ao salvar agendamento');
-      console.error(error);
+      console.error('Erro detalhado:', error);
     }
   };
 
@@ -619,14 +654,12 @@ export default function Appointments() {
     try {
       setLoading(true);
       if (currentAppointment.recurrence && deleteScope === 'all') {
-        // Excluir todos os agendamentos relacionados
         const relatedAppointments = appointments.filter(a => a.recurrence === currentAppointment.recurrence);
         for (const appt of relatedAppointments) {
           await supabase.from('appointment_services').delete().eq('appointment_id', appt.id);
           await supabase.from('appointments').delete().eq('id', appt.id);
         }
       } else {
-        // Excluir apenas o agendamento atual
         await supabase.from('appointment_services').delete().eq('appointment_id', currentAppointment.id);
         await supabase.from('appointments').delete().eq('id', currentAppointment.id);
       }
@@ -889,7 +922,11 @@ export default function Appointments() {
               <Select
                 multiple
                 value={appointmentServices}
-                onChange={(e) => setAppointmentServices(e.target.value as string[])}
+                onChange={(e) => {
+                  const newValue = e.target.value as string[];
+                  console.log('Serviços selecionados:', newValue);
+                  setAppointmentServices(newValue);
+                }}
                 renderValue={(selected) => selected.map(id => services.find(s => s.id === id)?.name).join(', ')}
                 label="Serviços"
                 sx={{ borderRadius: 2 }}
