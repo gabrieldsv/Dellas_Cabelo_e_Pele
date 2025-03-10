@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Paper, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
+import {
+  Box,
+  Typography,
+  Button,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
   TableRow,
   TextField,
   Dialog,
@@ -32,7 +32,7 @@ import {
   Radio,
   RadioGroup,
 } from '@mui/material';
-import { 
+import {
   Add as AddIcon,
   Search as SearchIcon,
   Edit as EditIcon,
@@ -42,6 +42,7 @@ import {
   Phone as PhoneIcon,
   DateRange as DateRangeIcon,
   Repeat as RepeatIcon,
+  Lock as LockIcon, // Novo ícone para bloqueio
 } from '@mui/icons-material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -50,14 +51,14 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { ptBR } from 'date-fns/locale';
-import { 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  startOfDay, 
-  endOfDay, 
-  isWithinInterval, 
+import {
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  startOfDay,
+  endOfDay,
+  isWithinInterval,
   parseISO,
   addDays,
   addWeeks,
@@ -74,7 +75,7 @@ interface Appointment {
   end_time: string;
   status: string;
   final_price: number;
-  appointment_services: { 
+  appointment_services: {
     id: string;
     service_id: string;
     price: number;
@@ -97,10 +98,18 @@ interface Service {
   price: number;
 }
 
+interface BlockedSchedule {
+  id: string;
+  start_time: string;
+  end_time: string;
+  reason?: string;
+}
+
 export default function Appointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [blockedSchedules, setBlockedSchedules] = useState<BlockedSchedule[]>([]); // Novo estado para bloqueios
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -113,6 +122,7 @@ export default function Appointments() {
   const [openServiceDialog, setOpenServiceDialog] = useState(false);
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [openBlockDialog, setOpenBlockDialog] = useState(false); // Novo diálogo para bloqueio
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
   const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
 
@@ -123,10 +133,13 @@ export default function Appointments() {
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('0');
-  const [finalPrices, setFinalPrices] = useState<{[key: string]: string}>({});
+  const [finalPrices, setFinalPrices] = useState<{ [key: string]: string }>({});
   const [recurrenceType, setRecurrenceType] = useState('none');
   const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]);
   const [recurrenceWeeks, setRecurrenceWeeks] = useState('4');
+  const [blockStart, setBlockStart] = useState<Date | null>(null); // Novo estado para bloqueio
+  const [blockEnd, setBlockEnd] = useState<Date | null>(null); // Novo estado para bloqueio
+  const [blockReason, setBlockReason] = useState(''); // Novo estado para motivo do bloqueio
 
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
@@ -144,15 +157,20 @@ export default function Appointments() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [appointmentsData, clientsData, servicesData] = await Promise.all([
-        supabase.from('appointments').select('*, appointment_services(id, service_id, price, final_price, services(name))').order('start_time', { ascending: false }),
+      const [appointmentsData, clientsData, servicesData, blockedData] = await Promise.all([
+        supabase
+          .from('appointments')
+          .select('*, appointment_services(id, service_id, price, final_price, services(name))')
+          .order('start_time', { ascending: false }),
         supabase.from('clients').select('*'),
-        supabase.from('services').select('*')
+        supabase.from('services').select('*'),
+        supabase.from('blocked_schedules').select('*').order('start_time', { ascending: true }), // Carregar bloqueios
       ]);
 
       if (appointmentsData.error) throw appointmentsData.error;
       if (clientsData.error) throw clientsData.error;
       if (servicesData.error) throw servicesData.error;
+      if (blockedData.error) throw blockedData.error;
 
       const sortedClients = (clientsData.data || []).sort((a, b) => a.name.localeCompare(b.name));
       setAppointments(appointmentsData.data || []);
@@ -161,6 +179,7 @@ export default function Appointments() {
       setFilteredClients(sortedClients);
       setServices(servicesData.data || []);
       setFilteredServices(servicesData.data || []);
+      setBlockedSchedules(blockedData.data || []); // Atualizar bloqueios
     } catch (error) {
       setError('Erro ao carregar dados');
       console.error(error);
@@ -185,7 +204,7 @@ export default function Appointments() {
   const handleFilter = () => {
     let filtered = [...appointments];
     if (startDate && endDate) {
-      filtered = filtered.filter(appointment => {
+      filtered = filtered.filter((appointment) => {
         try {
           const appointmentDate = parseISO(appointment.start_time);
           const isInRange = isWithinInterval(appointmentDate, { start: startDate, end: endDate });
@@ -199,8 +218,8 @@ export default function Appointments() {
               const diffWeeks = differenceInWeeks(endDate, baseDate);
 
               if (diffWeeks >= 0 && diffWeeks <= numWeeks) {
-                const dayOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
-                return recurrenceDays.some(day => {
+                const dayOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
+                return recurrenceDays.some((day) => {
                   const baseDay = dayOfWeekMap[day as keyof typeof dayOfWeekMap];
                   const startDay = getDay(startDate);
                   const endDay = getDay(endDate);
@@ -218,9 +237,11 @@ export default function Appointments() {
       });
     }
     if (searchTerm) {
-      filtered = filtered.filter(appointment => {
-        const client = clients.find(c => c.id === appointment.client_id);
-        const serviceNames = appointment.appointment_services.map(as => as.services?.name || services.find(s => s.id === as.service_id)?.name || '').join(', ');
+      filtered = filtered.filter((appointment) => {
+        const client = clients.find((c) => c.id === appointment.client_id);
+        const serviceNames = appointment.appointment_services
+          .map((as) => as.services?.name || services.find((s) => s.id === as.service_id)?.name || '')
+          .join(', ');
         return (
           client?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (client?.phone && client.phone.includes(searchTerm)) ||
@@ -241,9 +262,10 @@ export default function Appointments() {
     let filtered = [...clients];
     if (clientSearchTerm) {
       const searchTermLower = clientSearchTerm.toLowerCase();
-      filtered = filtered.filter(client => 
-        client.name.toLowerCase().includes(searchTermLower) ||
-        (client.phone && client.phone.toLowerCase().includes(searchTermLower))
+      filtered = filtered.filter(
+        (client) =>
+          client.name.toLowerCase().includes(searchTermLower) ||
+          (client.phone && client.phone.toLowerCase().includes(searchTermLower))
       );
     }
     filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -253,9 +275,10 @@ export default function Appointments() {
   const handleFilterServices = () => {
     setFilteredServices(
       serviceSearchTerm
-        ? services.filter(service => 
-            service.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()) ||
-            service.price.toString().includes(serviceSearchTerm)
+        ? services.filter(
+            (service) =>
+              service.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()) ||
+              service.price.toString().includes(serviceSearchTerm)
           )
         : services
     );
@@ -273,8 +296,7 @@ export default function Appointments() {
     if (appointment) {
       setCurrentAppointment(appointment);
       setClientId(appointment.client_id);
-      const initialServices = [...appointment.appointment_services.map(as => as.service_id)];
-      console.log('Serviços iniciais ao editar:', initialServices);
+      const initialServices = [...appointment.appointment_services.map((as) => as.service_id)];
       setAppointmentServices(initialServices);
       setAppointmentDate(new Date(appointment.start_time));
       if (appointment.recurrence) {
@@ -322,6 +344,23 @@ export default function Appointments() {
     setOpenDeleteDialog(true);
   };
   const handleCloseDeleteDialog = () => setOpenDeleteDialog(false);
+  const handleOpenBlockDialog = () => {
+    setBlockStart(null);
+    setBlockEnd(null);
+    setBlockReason('');
+    setOpenBlockDialog(true);
+  };
+  const handleCloseBlockDialog = () => setOpenBlockDialog(false);
+
+  const isScheduleBlocked = async (startTime: string, endTime: string) => {
+    const { data, error } = await supabase
+      .from('blocked_schedules')
+      .select('*')
+      .lte('start_time', endTime)
+      .gte('end_time', startTime);
+    if (error) throw error;
+    return data.length > 0;
+  };
 
   const handleSaveAppointment = async () => {
     if (!clientId || appointmentServices.length === 0 || !appointmentDate) {
@@ -332,58 +371,73 @@ export default function Appointments() {
       const totalDurationMinutes = appointmentServices.length * 30;
       const startDate = new Date(appointmentDate);
       const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
-      const recurrenceString = recurrenceType === 'weekly' && recurrenceDays.length > 0 
-        ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}` 
-        : null;
+      const recurrenceString =
+        recurrenceType === 'weekly' && recurrenceDays.length > 0
+          ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}`
+          : null;
+
+      // Verificar bloqueio para agendamento único ou recorrente
+      if (recurrenceString) {
+        const numWeeks = parseInt(recurrenceWeeks) || 4;
+        const daysOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
+        for (const day of recurrenceDays) {
+          const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
+          const firstDate = new Date(startDate);
+          const currentDay = getDay(firstDate);
+          const daysToAdd = (dayNumber - currentDay + 7) % 7;
+          for (let week = 0; week < numWeeks; week++) {
+            const appointmentDate = addWeeks(daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), week);
+            const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
+            if (await isScheduleBlocked(appointmentDate.toISOString(), appointmentEndDate.toISOString())) {
+              setError(`Horário bloqueado encontrado em ${format(appointmentDate, 'dd/MM/yyyy HH:mm')}`);
+              return;
+            }
+          }
+        }
+      } else {
+        if (await isScheduleBlocked(startDate.toISOString(), endDate.toISOString())) {
+          setError('Este horário está bloqueado');
+          return;
+        }
+      }
 
       const uniqueServices = [...new Set(appointmentServices)];
-      console.log('Serviços únicos a serem salvos:', uniqueServices);
 
       const updateServicesForAppointment = async (appointmentId: string) => {
-        // Buscar serviços existentes no banco para o agendamento
         const { data: existingServices, error: fetchError } = await supabase
           .from('appointment_services')
           .select('id, service_id')
           .eq('appointment_id', appointmentId);
         if (fetchError) throw fetchError;
 
-        const existingServiceIds = existingServices.map(s => s.service_id);
-        const existingServiceRecords = existingServices.map(s => ({ id: s.id, service_id: s.service_id }));
+        const existingServiceIds = existingServices.map((s) => s.service_id);
+        const existingServiceRecords = existingServices.map((s) => ({ id: s.id, service_id: s.service_id }));
 
-        // Identificar serviços a remover (os que estavam no banco mas não estão mais em uniqueServices)
-        const servicesToRemove = existingServiceRecords.filter(s => !uniqueServices.includes(s.service_id));
+        const servicesToRemove = existingServiceRecords.filter((s) => !uniqueServices.includes(s.service_id));
         if (servicesToRemove.length > 0) {
-          console.log('Serviços a remover:', servicesToRemove);
           const { error: deleteError } = await supabase
             .from('appointment_services')
             .delete()
-            .in('id', servicesToRemove.map(s => s.id));
+            .in('id', servicesToRemove.map((s) => s.id));
           if (deleteError) throw deleteError;
         }
 
-        // Identificar serviços a adicionar (os que estão em uniqueServices mas não no banco)
-        const servicesToAdd = uniqueServices.filter(serviceId => !existingServiceIds.includes(serviceId));
+        const servicesToAdd = uniqueServices.filter((serviceId) => !existingServiceIds.includes(serviceId));
         if (servicesToAdd.length > 0) {
-          const servicesToInsert = servicesToAdd.map(serviceId => ({
+          const servicesToInsert = servicesToAdd.map((serviceId) => ({
             appointment_id: appointmentId,
             service_id: serviceId,
-            price: services.find(s => s.id === serviceId)?.price || 0,
-            final_price: 0
+            price: services.find((s) => s.id === serviceId)?.price || 0,
+            final_price: 0,
           }));
-          console.log('Serviços a inserir:', servicesToInsert);
-          const { error: insertError } = await supabase
-            .from('appointment_services')
-            .insert(servicesToInsert);
+          const { error: insertError } = await supabase.from('appointment_services').insert(servicesToInsert);
           if (insertError) throw insertError;
         }
       };
 
       if (currentAppointment) {
         if (currentAppointment.recurrence) {
-          // Excluir todos os agendamentos recorrentes e recriá-los
-          const relatedAppointments = appointments.filter(a => a.recurrence === currentAppointment.recurrence);
-          console.log('Agendamentos relacionados a excluir:', relatedAppointments.length);
-          
+          const relatedAppointments = appointments.filter((a) => a.recurrence === currentAppointment.recurrence);
           for (const appt of relatedAppointments) {
             const { error: deleteServicesError } = await supabase
               .from('appointment_services')
@@ -399,59 +453,50 @@ export default function Appointments() {
           }
 
           const numWeeks = parseInt(recurrenceWeeks) || 4;
-          const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
-          
+          const daysOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
           for (const day of recurrenceDays) {
             const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
             const firstDate = new Date(startDate);
             const currentDay = getDay(firstDate);
             const daysToAdd = (dayNumber - currentDay + 7) % 7;
-            
             for (let week = 0; week < numWeeks; week++) {
-              const appointmentDate = addWeeks(
-                daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), 
-                week
-              );
+              const appointmentDate = addWeeks(daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), week);
               const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
-              
+
               const { data, error } = await supabase
                 .from('appointments')
-                .insert([{ 
-                  client_id: clientId, 
-                  start_time: appointmentDate.toISOString(), 
-                  end_time: appointmentEndDate.toISOString(), 
-                  status: 'scheduled', 
-                  created_by: user?.id,
-                  recurrence: recurrenceString 
-                }])
+                .insert([
+                  {
+                    client_id: clientId,
+                    start_time: appointmentDate.toISOString(),
+                    end_time: appointmentEndDate.toISOString(),
+                    status: 'scheduled',
+                    created_by: user?.id,
+                    recurrence: recurrenceString,
+                  },
+                ])
                 .select('id')
                 .single();
-              
               if (error) throw error;
-              console.log('Novo agendamento criado (recorrente):', data.id);
 
-              const servicesToInsert = uniqueServices.map(serviceId => ({
+              const servicesToInsert = uniqueServices.map((serviceId) => ({
                 appointment_id: data.id,
                 service_id: serviceId,
-                price: services.find(s => s.id === serviceId)?.price || 0,
-                final_price: 0
+                price: services.find((s) => s.id === serviceId)?.price || 0,
+                final_price: 0,
               }));
-              console.log('Serviços a inserir (recorrente):', servicesToInsert);
-              const { error: insertError } = await supabase
-                .from('appointment_services')
-                .insert(servicesToInsert);
+              const { error: insertError } = await supabase.from('appointment_services').insert(servicesToInsert);
               if (insertError) throw insertError;
             }
           }
         } else {
-          // Atualizar agendamento único
           const { data, error } = await supabase
             .from('appointments')
-            .update({ 
-              client_id: clientId, 
-              start_time: startDate.toISOString(), 
+            .update({
+              client_id: clientId,
+              start_time: startDate.toISOString(),
               end_time: endDate.toISOString(),
-              recurrence: recurrenceString 
+              recurrence: recurrenceString,
             })
             .eq('id', currentAppointment.id)
             .select('id')
@@ -463,76 +508,66 @@ export default function Appointments() {
       } else {
         if (recurrenceType === 'weekly' && recurrenceDays.length > 0) {
           const numWeeks = parseInt(recurrenceWeeks) || 4;
-          const daysOfWeekMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0 };
-          
+          const daysOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
           for (const day of recurrenceDays) {
             const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
             const firstDate = new Date(startDate);
             const currentDay = getDay(firstDate);
             const daysToAdd = (dayNumber - currentDay + 7) % 7;
-            
             for (let week = 0; week < numWeeks; week++) {
-              const appointmentDate = addWeeks(
-                daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), 
-                week
-              );
+              const appointmentDate = addWeeks(daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), week);
               const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
-              
+
               const { data, error } = await supabase
                 .from('appointments')
-                .insert([{ 
-                  client_id: clientId, 
-                  start_time: appointmentDate.toISOString(), 
-                  end_time: appointmentEndDate.toISOString(), 
-                  status: 'scheduled', 
-                  created_by: user?.id,
-                  recurrence: recurrenceString 
-                }])
+                .insert([
+                  {
+                    client_id: clientId,
+                    start_time: appointmentDate.toISOString(),
+                    end_time: appointmentEndDate.toISOString(),
+                    status: 'scheduled',
+                    created_by: user?.id,
+                    recurrence: recurrenceString,
+                  },
+                ])
                 .select('id')
                 .single();
-              
               if (error) throw error;
-              console.log('Novo agendamento criado (recorrente):', data.id);
 
-              const servicesToInsert = uniqueServices.map(serviceId => ({
+              const servicesToInsert = uniqueServices.map((serviceId) => ({
                 appointment_id: data.id,
                 service_id: serviceId,
-                price: services.find(s => s.id === serviceId)?.price || 0,
-                final_price: 0
+                price: services.find((s) => s.id === serviceId)?.price || 0,
+                final_price: 0,
               }));
-              console.log('Serviços a inserir (recorrente):', servicesToInsert);
-              const { error: insertError } = await supabase
-                .from('appointment_services')
-                .insert(servicesToInsert);
+              const { error: insertError } = await supabase.from('appointment_services').insert(servicesToInsert);
               if (insertError) throw insertError;
             }
           }
         } else {
           const { data, error } = await supabase
             .from('appointments')
-            .insert([{ 
-              client_id: clientId, 
-              start_time: startDate.toISOString(), 
-              end_time: endDate.toISOString(), 
-              status: 'scheduled', 
-              created_by: user?.id,
-              recurrence: recurrenceString 
-            }])
+            .insert([
+              {
+                client_id: clientId,
+                start_time: startDate.toISOString(),
+                end_time: endDate.toISOString(),
+                status: 'scheduled',
+                created_by: user?.id,
+                recurrence: recurrenceString,
+              },
+            ])
             .select('id')
             .single();
           if (error) throw error;
-          console.log('Novo agendamento único criado:', data.id);
 
-          const servicesToInsert = uniqueServices.map(serviceId => ({
+          const servicesToInsert = uniqueServices.map((serviceId) => ({
             appointment_id: data.id,
             service_id: serviceId,
-            price: services.find(s => s.id === serviceId)?.price || 0,
-            final_price: 0
+            price: services.find((s) => s.id === serviceId)?.price || 0,
+            final_price: 0,
           }));
-          console.log('Serviços a inserir (novo):', servicesToInsert);
-          const { error: insertError } = await supabase
-            .from('appointment_services')
-            .insert(servicesToInsert);
+          const { error: insertError } = await supabase.from('appointment_services').insert(servicesToInsert);
           if (insertError) throw insertError;
         }
       }
@@ -599,8 +634,8 @@ export default function Appointments() {
 
   const handleCompleteAppointment = (appointment: Appointment) => {
     setCurrentAppointment(appointment);
-    const initialPrices: {[key: string]: string} = {};
-    appointment.appointment_services.forEach(service => {
+    const initialPrices: { [key: string]: string } = {};
+    appointment.appointment_services.forEach((service) => {
       initialPrices[service.id] = service.price.toString();
     });
     setFinalPrices(initialPrices);
@@ -636,10 +671,7 @@ export default function Appointments() {
 
   const handleCancelAppointment = async (appointmentId: string) => {
     try {
-      const { error } = await supabase
-        .from('appointments')
-        .update({ status: 'cancelled' })
-        .eq('id', appointmentId);
+      const { error } = await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appointmentId);
       if (error) throw error;
       setSuccess('Agendamento cancelado com sucesso!');
       fetchData();
@@ -654,7 +686,7 @@ export default function Appointments() {
     try {
       setLoading(true);
       if (currentAppointment.recurrence && deleteScope === 'all') {
-        const relatedAppointments = appointments.filter(a => a.recurrence === currentAppointment.recurrence);
+        const relatedAppointments = appointments.filter((a) => a.recurrence === currentAppointment.recurrence);
         for (const appt of relatedAppointments) {
           await supabase.from('appointment_services').delete().eq('appointment_id', appt.id);
           await supabase.from('appointments').delete().eq('id', appt.id);
@@ -675,12 +707,42 @@ export default function Appointments() {
     }
   };
 
+  const handleSaveBlock = async () => {
+    if (!blockStart || !blockEnd) {
+      setError('Início e fim do bloqueio são obrigatórios');
+      return;
+    }
+    if (blockStart >= blockEnd) {
+      setError('O horário de início deve ser anterior ao horário de fim');
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('blocked_schedules')
+        .insert([{ start_time: blockStart.toISOString(), end_time: blockEnd.toISOString(), reason: blockReason || null }])
+        .select()
+        .single();
+      if (error) throw error;
+
+      setBlockedSchedules([...blockedSchedules, data]);
+      setSuccess('Horário bloqueado com sucesso!');
+      handleCloseBlockDialog();
+    } catch (error) {
+      setError('Erro ao bloquear horário');
+      console.error(error);
+    }
+  };
+
   const getStatusChip = (status: string) => {
     switch (status) {
-      case 'scheduled': return <Chip label="Agendado" color="primary" size="small" />;
-      case 'completed': return <Chip label="Concluído" color="success" size="small" />;
-      case 'cancelled': return <Chip label="Cancelado" color="error" size="small" />;
-      default: return <Chip label={status} size="small" />;
+      case 'scheduled':
+        return <Chip label="Agendado" color="primary" size="small" />;
+      case 'completed':
+        return <Chip label="Concluído" color="success" size="small" />;
+      case 'cancelled':
+        return <Chip label="Cancelado" color="error" size="small" />;
+      default:
+        return <Chip label={status} size="small" />;
     }
   };
 
@@ -717,15 +779,27 @@ export default function Appointments() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>Agendamentos</Typography>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{ backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' }, borderRadius: 2 }}
-        >
-          Novo Agendamento
-        </Button>
+        <Typography variant="h4" sx={{ fontWeight: 'medium' }}>
+          Agendamentos
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+            sx={{ backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' }, borderRadius: 2 }}
+          >
+            Novo Agendamento
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<LockIcon />}
+            onClick={handleOpenBlockDialog}
+            sx={{ backgroundColor: 'secondary.main', '&:hover': { backgroundColor: 'secondary.dark' }, borderRadius: 2 }}
+          >
+            Bloquear Horário
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2, boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)', display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -757,13 +831,13 @@ export default function Appointments() {
         </TextField>
         {dateRange === 'custom' && (
           <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
-            <DatePicker 
+            <DatePicker
               label="Data Inicial"
               value={startDate}
               onChange={(newValue) => setStartDate(newValue)}
               slotProps={{ textField: { size: 'small' } }}
             />
-            <DatePicker 
+            <DatePicker
               label="Data Final"
               value={endDate}
               onChange={(newValue) => setEndDate(newValue)}
@@ -771,15 +845,39 @@ export default function Appointments() {
             />
           </LocalizationProvider>
         )}
-        <Button 
-          variant="outlined" 
-          onClick={fetchData}
-          startIcon={<DateRangeIcon />}
-          sx={{ borderRadius: 2 }}
-        >
+        <Button variant="outlined" onClick={fetchData} startIcon={<DateRangeIcon />} sx={{ borderRadius: 2 }}>
           Atualizar
         </Button>
       </Paper>
+
+      {/* Lista de Horários Bloqueados */}
+      {blockedSchedules.length > 0 && (
+        <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Horários Bloqueados
+          </Typography>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Início</TableCell>
+                  <TableCell>Fim</TableCell>
+                  <TableCell>Motivo</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {blockedSchedules.map((block) => (
+                  <TableRow key={block.id}>
+                    <TableCell>{format(parseISO(block.start_time), 'dd/MM/yyyy HH:mm')}</TableCell>
+                    <TableCell>{format(parseISO(block.end_time), 'dd/MM/yyyy HH:mm')}</TableCell>
+                    <TableCell>{block.reason || 'Sem motivo informado'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
 
       <TableContainer component={Paper}>
         <Table>
@@ -797,7 +895,7 @@ export default function Appointments() {
           </TableHead>
           <TableBody>
             {filteredAppointments.map((appointment) => {
-              const client = clients.find(c => c.id === appointment.client_id) || { name: 'Desconhecido', phone: '' };
+              const client = clients.find((c) => c.id === appointment.client_id) || { name: 'Desconhecido', phone: '' };
               return (
                 <TableRow key={appointment.id}>
                   <TableCell>{client.name}</TableCell>
@@ -808,39 +906,68 @@ export default function Appointments() {
                         {formatPhoneDisplay(client.phone)}
                       </Box>
                     ) : (
-                      <Typography variant="body2" color="text.secondary">Não informado</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Não informado
+                      </Typography>
                     )}
                   </TableCell>
-                  <TableCell>{appointment.appointment_services.map(as => as.services?.name || services.find(s => s.id === as.service_id)?.name || '').join(', ')}</TableCell>
+                  <TableCell>
+                    {appointment.appointment_services
+                      .map((as) => as.services?.name || services.find((s) => s.id === as.service_id)?.name || '')
+                      .join(', ')}
+                  </TableCell>
                   <TableCell>{getDayOfWeek(appointment.start_time)}</TableCell>
                   <TableCell>{new Date(appointment.start_time).toLocaleString('pt-BR')}</TableCell>
                   <TableCell>
                     {appointment.recurrence ? (
-                      <Chip 
-                        label={`Recorrente: ${appointment.recurrence.split('-')[1].replace(/,/g, ', ')} (${appointment.recurrence.split('-')[2]} semanas)`}
+                      <Chip
+                        label={`Recorrente: ${appointment.recurrence
+                          .split('-')[1]
+                          .replace(/,/g, ', ')} (${appointment.recurrence.split('-')[2]} semanas)`}
                         icon={<RepeatIcon />}
                         size="small"
                         color="info"
                       />
-                    ) : 'Único'}
+                    ) : (
+                      'Único'
+                    )}
                   </TableCell>
                   <TableCell>{getStatusChip(appointment.status)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                       {appointment.status === 'scheduled' && (
                         <>
-                          <IconButton color="success" onClick={() => handleCompleteAppointment(appointment)} size="small" sx={{ mr: 1 }}>
+                          <IconButton
+                            color="success"
+                            onClick={() => handleCompleteAppointment(appointment)}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          >
                             <CheckCircleIcon />
                           </IconButton>
-                          <IconButton color="error" onClick={() => handleCancelAppointment(appointment.id)} size="small" sx={{ mr: 1 }}>
+                          <IconButton
+                            color="error"
+                            onClick={() => handleCancelAppointment(appointment.id)}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          >
                             <CancelIcon />
                           </IconButton>
                         </>
                       )}
-                      <IconButton color="primary" onClick={() => handleOpenDialog(appointment)} size="small" sx={{ mr: 1 }}>
+                      <IconButton
+                        color="primary"
+                        onClick={() => handleOpenDialog(appointment)}
+                        size="small"
+                        sx={{ mr: 1 }}
+                      >
                         <EditIcon />
                       </IconButton>
-                      <IconButton color="error" onClick={() => handleOpenDeleteDialog(appointment)} size="small">
+                      <IconButton
+                        color="error"
+                        onClick={() => handleOpenDeleteDialog(appointment)}
+                        size="small"
+                      >
                         <DeleteIcon />
                       </IconButton>
                     </Box>
@@ -883,12 +1010,14 @@ export default function Appointments() {
                 sx={{ borderRadius: 2 }}
               >
                 {filteredClients.length > 0 ? (
-                  filteredClients.map(client => (
+                  filteredClients.map((client) => (
                     <MenuItem key={client.id} value={client.id}>
                       <Box>
                         <Typography variant="body1">{client.name}</Typography>
                         {client.phone && (
-                          <Typography variant="caption" color="text.secondary">{formatPhoneDisplay(client.phone)}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatPhoneDisplay(client.phone)}
+                          </Typography>
                         )}
                       </Box>
                     </MenuItem>
@@ -924,14 +1053,13 @@ export default function Appointments() {
                 value={appointmentServices}
                 onChange={(e) => {
                   const newValue = e.target.value as string[];
-                  console.log('Serviços selecionados:', newValue);
                   setAppointmentServices(newValue);
                 }}
-                renderValue={(selected) => selected.map(id => services.find(s => s.id === id)?.name).join(', ')}
+                renderValue={(selected) => selected.map((id) => services.find((s) => s.id === id)?.name).join(', ')}
                 label="Serviços"
                 sx={{ borderRadius: 2 }}
               >
-                {filteredServices.map(service => (
+                {filteredServices.map((service) => (
                   <MenuItem key={service.id} value={service.id}>
                     <Checkbox checked={appointmentServices.includes(service.id)} />
                     <ListItemText primary={service.name} secondary={`R$ ${service.price.toFixed(2)}`} />
@@ -968,13 +1096,47 @@ export default function Appointments() {
                     multiple
                     value={recurrenceDays}
                     onChange={(e) => setRecurrenceDays(e.target.value as string[])}
-                    renderValue={(selected) => selected.map(day => day === 'mon' ? 'Seg' : day === 'tue' ? 'Ter' : day === 'wed' ? 'Qua' : day === 'thu' ? 'Qui' : day === 'fri' ? 'Sex' : day === 'sat' ? 'Sáb' : 'Dom').join(', ')}
+                    renderValue={(selected) =>
+                      selected
+                        .map((day) =>
+                          day === 'mon'
+                            ? 'Seg'
+                            : day === 'tue'
+                            ? 'Ter'
+                            : day === 'wed'
+                            ? 'Qua'
+                            : day === 'thu'
+                            ? 'Qui'
+                            : day === 'fri'
+                            ? 'Sex'
+                            : day === 'sat'
+                            ? 'Sáb'
+                            : 'Dom'
+                        )
+                        .join(', ')
+                    }
                     label="Dias da Semana"
                   >
-                    {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => (
+                    {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => (
                       <MenuItem key={day} value={day}>
                         <Checkbox checked={recurrenceDays.includes(day)} />
-                        <ListItemText primary={day === 'mon' ? 'Segunda' : day === 'tue' ? 'Terça' : day === 'wed' ? 'Quarta' : day === 'thu' ? 'Quinta' : day === 'fri' ? 'Sexta' : day === 'sat' ? 'Sábado' : 'Domingo'} />
+                        <ListItemText
+                          primary={
+                            day === 'mon'
+                              ? 'Segunda'
+                              : day === 'tue'
+                              ? 'Terça'
+                              : day === 'wed'
+                              ? 'Quarta'
+                              : day === 'thu'
+                              ? 'Quinta'
+                              : day === 'fri'
+                              ? 'Sexta'
+                              : day === 'sat'
+                              ? 'Sábado'
+                              : 'Domingo'
+                          }
+                        />
                       </MenuItem>
                     ))}
                   </Select>
@@ -993,25 +1155,27 @@ export default function Appointments() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
-          <Button onClick={handleCloseDialog} sx={{ color: 'text.secondary' }}>Cancelar</Button>
+          <Button onClick={handleCloseDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button 
-              onClick={() => setOpenClientDialog(true)} 
-              variant="contained" 
+            <Button
+              onClick={() => setOpenClientDialog(true)}
+              variant="contained"
               sx={{ backgroundColor: '#c8e6c9', '&:hover': { backgroundColor: '#a5d6a7' }, borderRadius: 2 }}
             >
               Adicionar Novo Cliente
             </Button>
-            <Button 
-              onClick={() => setOpenServiceDialog(true)} 
-              variant="contained" 
+            <Button
+              onClick={() => setOpenServiceDialog(true)}
+              variant="contained"
               sx={{ backgroundColor: '#b3e5fc', '&:hover': { backgroundColor: '#90caf9' }, borderRadius: 2 }}
             >
               Adicionar Novo Serviço
             </Button>
-            <Button 
-              onClick={handleSaveAppointment} 
-              variant="contained" 
+            <Button
+              onClick={handleSaveAppointment}
+              variant="contained"
               sx={{ backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' }, borderRadius: 2 }}
             >
               Salvar
@@ -1045,10 +1209,12 @@ export default function Appointments() {
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleCloseClientDialog} sx={{ color: 'text.secondary' }}>Cancelar</Button>
-          <Button 
-            onClick={handleSaveNewClient} 
-            variant="contained" 
+          <Button onClick={handleCloseClientDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveNewClient}
+            variant="contained"
             sx={{ backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' }, borderRadius: 2 }}
           >
             Salvar
@@ -1082,10 +1248,12 @@ export default function Appointments() {
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleCloseServiceDialog} sx={{ color: 'text.secondary' }}>Cancelar</Button>
-          <Button 
-            onClick={handleSaveNewService} 
-            variant="contained" 
+          <Button onClick={handleCloseServiceDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveNewService}
+            variant="contained"
             sx={{ backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' }, borderRadius: 2 }}
           >
             Salvar
@@ -1097,11 +1265,13 @@ export default function Appointments() {
       <Dialog open={openCompleteDialog} onClose={handleCloseCompleteDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Finalizar Agendamento</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
-          <Typography variant="subtitle1" sx={{ mb: 2 }}>Informe o valor final de cada serviço:</Typography>
-          {currentAppointment?.appointment_services.map(service => (
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            Informe o valor final de cada serviço:
+          </Typography>
+          {currentAppointment?.appointment_services.map((service) => (
             <Box key={service.id} sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {service.services?.name || services.find(s => s.id === service.service_id)?.name || 'Serviço'}
+                {service.services?.name || services.find((s) => s.id === service.service_id)?.name || 'Serviço'}
               </Typography>
               <TextField
                 fullWidth
@@ -1117,18 +1287,18 @@ export default function Appointments() {
           ))}
           <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
             <Typography variant="subtitle1">
-              Valor Total: R$ {Object.values(finalPrices).reduce((sum, price) => sum + (Number(price) || 0), 0).toFixed(2)}
+              Valor Total: R${' '}
+              {Object.values(finalPrices)
+                .reduce((sum, price) => sum + (Number(price) || 0), 0)
+                .toFixed(2)}
             </Typography>
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleCloseCompleteDialog} sx={{ color: 'text.secondary' }}>Cancelar</Button>
-          <Button 
-            onClick={handleSaveCompletedAppointment} 
-            variant="contained" 
-            color="success" 
-            sx={{ borderRadius: 2 }}
-          >
+          <Button onClick={handleCloseCompleteDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSaveCompletedAppointment} variant="contained" color="success" sx={{ borderRadius: 2 }}>
             Finalizar
           </Button>
         </DialogActions>
@@ -1139,16 +1309,21 @@ export default function Appointments() {
         <DialogTitle>Confirmar exclusão</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            {currentAppointment?.recurrence 
+            {currentAppointment?.recurrence
               ? 'Deseja excluir apenas este agendamento ou todos os agendamentos recorrentes relacionados?'
               : 'Tem certeza que deseja excluir este agendamento?'}
           </DialogContentText>
           {currentAppointment && (
             <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-              <Typography>Cliente: {clients.find(c => c.id === currentAppointment.client_id)?.name || 'Desconhecido'}</Typography>
+              <Typography>
+                Cliente: {clients.find((c) => c.id === currentAppointment.client_id)?.name || 'Desconhecido'}
+              </Typography>
               <Typography>Data: {new Date(currentAppointment.start_time).toLocaleString('pt-BR')}</Typography>
               {currentAppointment.recurrence && (
-                <Typography>Recorrência: {currentAppointment.recurrence.split('-')[1].replace(/,/g, ', ')} ({currentAppointment.recurrence.split('-')[2]} semanas)</Typography>
+                <Typography>
+                  Recorrência: {currentAppointment.recurrence.split('-')[1].replace(/,/g, ', ')} (
+                  {currentAppointment.recurrence.split('-')[2]} semanas)
+                </Typography>
               )}
             </Box>
           )}
@@ -1172,11 +1347,55 @@ export default function Appointments() {
         </DialogActions>
       </Dialog>
 
+      {/* Modal Bloquear Horário */}
+      <Dialog open={openBlockDialog} onClose={handleCloseBlockDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Bloquear Horário</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+            <DateTimePicker
+              label="Início do Bloqueio"
+              value={blockStart}
+              onChange={(newValue) => setBlockStart(newValue)}
+              slotProps={{ textField: { fullWidth: true, sx: { mb: 2, borderRadius: 2 } } }}
+            />
+            <DateTimePicker
+              label="Fim do Bloqueio"
+              value={blockEnd}
+              onChange={(newValue) => setBlockEnd(newValue)}
+              slotProps={{ textField: { fullWidth: true, sx: { mb: 2, borderRadius: 2 } } }}
+            />
+          </LocalizationProvider>
+          <TextField
+            fullWidth
+            label="Motivo (opcional)"
+            value={blockReason}
+            onChange={(e) => setBlockReason(e.target.value)}
+            sx={{ borderRadius: 2 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleCloseBlockDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveBlock}
+            variant="contained"
+            sx={{ backgroundColor: 'secondary.main', '&:hover': { backgroundColor: 'secondary.dark' }, borderRadius: 2 }}
+          >
+            Bloquear
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError('')}>
-        <Alert onClose={() => setError('')} severity="error">{error}</Alert>
+        <Alert onClose={() => setError('')} severity="error">
+          {error}
+        </Alert>
       </Snackbar>
       <Snackbar open={!!success} autoHideDuration={6000} onClose={() => setSuccess('')}>
-        <Alert onClose={() => setSuccess('')} severity="success">{success}</Alert>
+        <Alert onClose={() => setSuccess('')} severity="success">
+          {success}
+        </Alert>
       </Snackbar>
     </Box>
   );
