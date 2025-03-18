@@ -42,7 +42,7 @@ import {
   Phone as PhoneIcon,
   DateRange as DateRangeIcon,
   Repeat as RepeatIcon,
-  Lock as LockIcon, // Novo ícone para bloqueio
+  Lock as LockIcon,
 } from '@mui/icons-material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -109,7 +109,7 @@ export default function Appointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [blockedSchedules, setBlockedSchedules] = useState<BlockedSchedule[]>([]); // Novo estado para bloqueios
+  const [blockedSchedules, setBlockedSchedules] = useState<BlockedSchedule[]>([]);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -122,8 +122,11 @@ export default function Appointments() {
   const [openServiceDialog, setOpenServiceDialog] = useState(false);
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-  const [openBlockDialog, setOpenBlockDialog] = useState(false); // Novo diálogo para bloqueio
+  const [openBlockDialog, setOpenBlockDialog] = useState(false);
+  const [openEditBlockDialog, setOpenEditBlockDialog] = useState(false);
+  const [openDeleteBlockDialog, setOpenDeleteBlockDialog] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
+  const [currentBlock, setCurrentBlock] = useState<BlockedSchedule | null>(null);
   const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
 
   const [clientId, setClientId] = useState('');
@@ -137,9 +140,9 @@ export default function Appointments() {
   const [recurrenceType, setRecurrenceType] = useState('none');
   const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]);
   const [recurrenceWeeks, setRecurrenceWeeks] = useState('4');
-  const [blockStart, setBlockStart] = useState<Date | null>(null); // Novo estado para bloqueio
-  const [blockEnd, setBlockEnd] = useState<Date | null>(null); // Novo estado para bloqueio
-  const [blockReason, setBlockReason] = useState(''); // Novo estado para motivo do bloqueio
+  const [blockStart, setBlockStart] = useState<Date | null>(null);
+  const [blockEnd, setBlockEnd] = useState<Date | null>(null);
+  const [blockReason, setBlockReason] = useState('');
 
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
@@ -164,7 +167,7 @@ export default function Appointments() {
           .order('start_time', { ascending: false }),
         supabase.from('clients').select('*'),
         supabase.from('services').select('*'),
-        supabase.from('blocked_schedules').select('*').order('start_time', { ascending: true }), // Carregar bloqueios
+        supabase.from('blocked_schedules').select('*').order('start_time', { ascending: true }),
       ]);
 
       if (appointmentsData.error) throw appointmentsData.error;
@@ -179,7 +182,7 @@ export default function Appointments() {
       setFilteredClients(sortedClients);
       setServices(servicesData.data || []);
       setFilteredServices(servicesData.data || []);
-      setBlockedSchedules(blockedData.data || []); // Atualizar bloqueios
+      setBlockedSchedules(blockedData.data || []);
     } catch (error) {
       setError('Erro ao carregar dados');
       console.error(error);
@@ -352,6 +355,32 @@ export default function Appointments() {
   };
   const handleCloseBlockDialog = () => setOpenBlockDialog(false);
 
+  const handleOpenEditBlockDialog = (block: BlockedSchedule) => {
+    setCurrentBlock(block);
+    setBlockStart(parseISO(block.start_time));
+    setBlockEnd(parseISO(block.end_time));
+    setBlockReason(block.reason || '');
+    setOpenEditBlockDialog(true);
+  };
+
+  const handleCloseEditBlockDialog = () => {
+    setOpenEditBlockDialog(false);
+    setCurrentBlock(null);
+    setBlockStart(null);
+    setBlockEnd(null);
+    setBlockReason('');
+  };
+
+  const handleOpenDeleteBlockDialog = (block: BlockedSchedule) => {
+    setCurrentBlock(block);
+    setOpenDeleteBlockDialog(true);
+  };
+
+  const handleCloseDeleteBlockDialog = () => {
+    setOpenDeleteBlockDialog(false);
+    setCurrentBlock(null);
+  };
+
   const isScheduleBlocked = async (startTime: string, endTime: string) => {
     const { data, error } = await supabase
       .from('blocked_schedules')
@@ -376,7 +405,6 @@ export default function Appointments() {
           ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}`
           : null;
 
-      // Verificar bloqueio para agendamento único ou recorrente
       if (recurrenceString) {
         const numWeeks = parseInt(recurrenceWeeks) || 4;
         const daysOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
@@ -733,6 +761,56 @@ export default function Appointments() {
     }
   };
 
+  const handleSaveEditedBlock = async () => {
+    if (!blockStart || !blockEnd) {
+      setError('Início e fim do bloqueio são obrigatórios');
+      return;
+    }
+    if (blockStart >= blockEnd) {
+      setError('O horário de início deve ser anterior ao horário de fim');
+      return;
+    }
+    if (!currentBlock) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('blocked_schedules')
+        .update({ start_time: blockStart.toISOString(), end_time: blockEnd.toISOString(), reason: blockReason || null })
+        .eq('id', currentBlock.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      setBlockedSchedules(
+        blockedSchedules.map((b) => (b.id === currentBlock.id ? data : b))
+      );
+      setSuccess('Bloqueio editado com sucesso!');
+      handleCloseEditBlockDialog();
+    } catch (error) {
+      setError('Erro ao editar bloqueio');
+      console.error(error);
+    }
+  };
+
+  const handleDeleteBlock = async () => {
+    if (!currentBlock) return;
+
+    try {
+      const { error } = await supabase
+        .from('blocked_schedules')
+        .delete()
+        .eq('id', currentBlock.id);
+      if (error) throw error;
+
+      setBlockedSchedules(blockedSchedules.filter((b) => b.id !== currentBlock.id));
+      setSuccess('Bloqueio excluído com sucesso!');
+      handleCloseDeleteBlockDialog();
+    } catch (error) {
+      setError('Erro ao excluir bloqueio');
+      console.error(error);
+    }
+  };
+
   const getStatusChip = (status: string) => {
     switch (status) {
       case 'scheduled':
@@ -850,7 +928,6 @@ export default function Appointments() {
         </Button>
       </Paper>
 
-      {/* Lista de Horários Bloqueados */}
       {blockedSchedules.length > 0 && (
         <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
           <Typography variant="h6" gutterBottom>
@@ -863,6 +940,7 @@ export default function Appointments() {
                   <TableCell>Início</TableCell>
                   <TableCell>Fim</TableCell>
                   <TableCell>Motivo</TableCell>
+                  <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -871,6 +949,23 @@ export default function Appointments() {
                     <TableCell>{format(parseISO(block.start_time), 'dd/MM/yyyy HH:mm')}</TableCell>
                     <TableCell>{format(parseISO(block.end_time), 'dd/MM/yyyy HH:mm')}</TableCell>
                     <TableCell>{block.reason || 'Sem motivo informado'}</TableCell>
+                    <TableCell align="right">
+                      <IconButton
+                        color="primary"
+                        onClick={() => handleOpenEditBlockDialog(block)}
+                        size="small"
+                        sx={{ mr: 1 }}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        color="error"
+                        onClick={() => handleOpenDeleteBlockDialog(block)}
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -979,7 +1074,6 @@ export default function Appointments() {
         </Table>
       </TableContainer>
 
-      {/* Modal de Agendamento */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{currentAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -1184,7 +1278,6 @@ export default function Appointments() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Novo Cliente */}
       <Dialog open={openClientDialog} onClose={handleCloseClientDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Adicionar Novo Cliente</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -1222,7 +1315,6 @@ export default function Appointments() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Novo Serviço */}
       <Dialog open={openServiceDialog} onClose={handleCloseServiceDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Adicionar Novo Serviço</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -1261,7 +1353,6 @@ export default function Appointments() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Finalizar Agendamento */}
       <Dialog open={openCompleteDialog} onClose={handleCloseCompleteDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Finalizar Agendamento</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -1304,7 +1395,6 @@ export default function Appointments() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Excluir Agendamento */}
       <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
         <DialogTitle>Confirmar exclusão</DialogTitle>
         <DialogContent>
@@ -1347,7 +1437,6 @@ export default function Appointments() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Bloquear Horário */}
       <Dialog open={openBlockDialog} onClose={handleCloseBlockDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Bloquear Horário</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
@@ -1383,6 +1472,72 @@ export default function Appointments() {
             sx={{ backgroundColor: 'secondary.main', '&:hover': { backgroundColor: 'secondary.dark' }, borderRadius: 2 }}
           >
             Bloquear
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openEditBlockDialog} onClose={handleCloseEditBlockDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar Bloqueio</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+            <DateTimePicker
+              label="Início do Bloqueio"
+              value={blockStart}
+              onChange={(newValue) => setBlockStart(newValue)}
+              slotProps={{ textField: { fullWidth: true, sx: { mb: 2, borderRadius: 2 } } }}
+            />
+            <DateTimePicker
+              label="Fim do Bloqueio"
+              value={blockEnd}
+              onChange={(newValue) => setBlockEnd(newValue)}
+              slotProps={{ textField: { fullWidth: true, sx: { mb: 2, borderRadius: 2 } } }}
+            />
+          </LocalizationProvider>
+          <TextField
+            fullWidth
+            label="Motivo (opcional)"
+            value={blockReason}
+            onChange={(e) => setBlockReason(e.target.value)}
+            sx={{ borderRadius: 2 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleCloseEditBlockDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveEditedBlock}
+            variant="contained"
+            sx={{ backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' }, borderRadius: 2 }}
+          >
+            Salvar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openDeleteBlockDialog} onClose={handleCloseDeleteBlockDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Confirmar Exclusão</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <DialogContentText>Tem certeza que deseja excluir este bloqueio de horário?</DialogContentText>
+          {currentBlock && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+              <Typography>Início: {format(parseISO(currentBlock.start_time), 'dd/MM/yyyy HH:mm')}</Typography>
+              <Typography>Fim: {format(parseISO(currentBlock.end_time), 'dd/MM/yyyy HH:mm')}</Typography>
+              <Typography>Motivo: {currentBlock.reason || 'Sem motivo informado'}</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleCloseDeleteBlockDialog} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleDeleteBlock}
+            variant="contained"
+            color="error"
+            sx={{ borderRadius: 2 }}
+          >
+            Excluir
           </Button>
         </DialogActions>
       </Dialog>
