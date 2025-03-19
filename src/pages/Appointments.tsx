@@ -125,6 +125,7 @@ export default function Appointments() {
   const [openBlockDialog, setOpenBlockDialog] = useState(false);
   const [openEditBlockDialog, setOpenEditBlockDialog] = useState(false);
   const [openDeleteBlockDialog, setOpenDeleteBlockDialog] = useState(false);
+  const [openConflictDialog, setOpenConflictDialog] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
   const [currentBlock, setCurrentBlock] = useState<BlockedSchedule | null>(null);
   const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
@@ -143,6 +144,7 @@ export default function Appointments() {
   const [blockStart, setBlockStart] = useState<Date | null>(null);
   const [blockEnd, setBlockEnd] = useState<Date | null>(null);
   const [blockReason, setBlockReason] = useState('');
+  const [appointmentConflicts, setAppointmentConflicts] = useState<{ date: string; endDate: string }[]>([]);
 
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
@@ -391,43 +393,15 @@ export default function Appointments() {
     return data.length > 0;
   };
 
-  const handleSaveAppointment = async () => {
-    if (!clientId || appointmentServices.length === 0 || !appointmentDate) {
-      setError('Todos os campos são obrigatórios');
-      return;
-    }
+  const proceedWithSave = async () => {
     try {
       const totalDurationMinutes = appointmentServices.length * 30;
-      const startDate = new Date(appointmentDate);
+      const startDate = new Date(appointmentDate!);
       const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
       const recurrenceString =
         recurrenceType === 'weekly' && recurrenceDays.length > 0
           ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}`
           : null;
-
-      if (recurrenceString) {
-        const numWeeks = parseInt(recurrenceWeeks) || 4;
-        const daysOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
-        for (const day of recurrenceDays) {
-          const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
-          const firstDate = new Date(startDate);
-          const currentDay = getDay(firstDate);
-          const daysToAdd = (dayNumber - currentDay + 7) % 7;
-          for (let week = 0; week < numWeeks; week++) {
-            const appointmentDate = addWeeks(daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), week);
-            const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
-            if (await isScheduleBlocked(appointmentDate.toISOString(), appointmentEndDate.toISOString())) {
-              setError(`Horário bloqueado encontrado em ${format(appointmentDate, 'dd/MM/yyyy HH:mm')}`);
-              return;
-            }
-          }
-        }
-      } else {
-        if (await isScheduleBlocked(startDate.toISOString(), endDate.toISOString())) {
-          setError('Este horário está bloqueado');
-          return;
-        }
-      }
 
       const uniqueServices = [...new Set(appointmentServices)];
 
@@ -605,6 +579,63 @@ export default function Appointments() {
       fetchData();
     } catch (error) {
       setError('Erro ao salvar agendamento');
+      console.error('Erro detalhado:', error);
+    }
+  };
+
+  const handleSaveAppointment = async () => {
+    if (!clientId || appointmentServices.length === 0 || !appointmentDate) {
+      setError('Todos os campos são obrigatórios');
+      return;
+    }
+    try {
+      const totalDurationMinutes = appointmentServices.length * 30;
+      const startDate = new Date(appointmentDate);
+      const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
+      const recurrenceString =
+        recurrenceType === 'weekly' && recurrenceDays.length > 0
+          ? `weekly-${recurrenceDays.join(',')}-${recurrenceWeeks}`
+          : null;
+
+      let conflicts: { date: string; endDate: string }[] = [];
+
+      if (recurrenceString) {
+        const numWeeks = parseInt(recurrenceWeeks) || 4;
+        const daysOfWeekMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
+        for (const day of recurrenceDays) {
+          const dayNumber = daysOfWeekMap[day as keyof typeof daysOfWeekMap];
+          const firstDate = new Date(startDate);
+          const currentDay = getDay(firstDate);
+          const daysToAdd = (dayNumber - currentDay + 7) % 7;
+          for (let week = 0; week < numWeeks; week++) {
+            const appointmentDate = addWeeks(daysToAdd === 0 ? firstDate : addDays(firstDate, daysToAdd), week);
+            const appointmentEndDate = new Date(appointmentDate.getTime() + totalDurationMinutes * 60000);
+            if (await isScheduleBlocked(appointmentDate.toISOString(), appointmentEndDate.toISOString())) {
+              conflicts.push({
+                date: format(appointmentDate, 'dd/MM/yyyy HH:mm'),
+                endDate: format(appointmentEndDate, 'dd/MM/yyyy HH:mm'),
+              });
+            }
+          }
+        }
+      } else {
+        if (await isScheduleBlocked(startDate.toISOString(), endDate.toISOString())) {
+          conflicts.push({
+            date: format(startDate, 'dd/MM/yyyy HH:mm'),
+            endDate: format(endDate, 'dd/MM/yyyy HH:mm'),
+          });
+        }
+      }
+
+      if (conflicts.length > 0) {
+        setAppointmentConflicts(conflicts);
+        setOpenConflictDialog(true);
+        return;
+      }
+
+      await proceedWithSave();
+    } catch (error) {
+      setError('Erro ao verificar conflitos');
       console.error('Erro detalhado:', error);
     }
   };
@@ -1538,6 +1569,41 @@ export default function Appointments() {
             sx={{ borderRadius: 2 }}
           >
             Excluir
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openConflictDialog} onClose={() => setOpenConflictDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Conflito de Horários</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <DialogContentText>
+            Foram encontrados conflitos com bloqueios nos seguintes horários:
+          </DialogContentText>
+          <Box component="ul" sx={{ mt: 2, pl: 2 }}>
+            {appointmentConflicts.map((conflict, index) => (
+              <Typography component="li" key={index}>
+                {`${conflict.date} até ${conflict.endDate}`}
+              </Typography>
+            ))}
+          </Box>
+          <DialogContentText sx={{ mt: 2 }}>
+            Deseja prosseguir com o agendamento mesmo assim?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setOpenConflictDialog(false)} sx={{ color: 'text.secondary' }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => {
+              setOpenConflictDialog(false);
+              proceedWithSave();
+            }}
+            variant="contained"
+            color="primary"
+            sx={{ borderRadius: 2 }}
+          >
+            Prosseguir
           </Button>
         </DialogActions>
       </Dialog>
