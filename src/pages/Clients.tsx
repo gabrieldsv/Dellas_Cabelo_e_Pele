@@ -25,7 +25,8 @@ import {
   Add as AddIcon,
   Search as SearchIcon,
   Edit as EditIcon,
-  Phone as PhoneIcon
+  Phone as PhoneIcon,
+  Delete as DeleteIcon // Adicionado ícone de exclusão
 } from '@mui/icons-material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -46,6 +47,8 @@ export default function Clients() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false); // Novo estado para dialog de exclusão
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null); // Cliente a ser excluído
   const { user } = useAuth();
 
   useEffect(() => {
@@ -95,7 +98,6 @@ export default function Clients() {
 
     try {
       if (editingClient) {
-        // Atualizar cliente existente
         const { error } = await supabase
           .from('clients')
           .update({ name, phone })
@@ -104,7 +106,6 @@ export default function Clients() {
         if (error) throw error;
         showSnackbar('Cliente atualizado com sucesso', 'success');
       } else {
-        // Criar novo cliente
         const { error } = await supabase
           .from('clients')
           .insert([{ name, phone, created_by: user?.id }]);
@@ -121,6 +122,39 @@ export default function Clients() {
     }
   };
 
+  // Função para abrir dialog de confirmação de exclusão
+  const handleOpenDeleteDialog = (client: Client) => {
+    setClientToDelete(client);
+    setOpenDeleteDialog(true);
+  };
+
+  // Função para fechar dialog de exclusão
+  const handleCloseDeleteDialog = () => {
+    setOpenDeleteDialog(false);
+    setClientToDelete(null);
+  };
+
+  // Função para excluir cliente
+  const handleDeleteClient = async () => {
+    if (!clientToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', clientToDelete.id);
+
+      if (error) throw error;
+      
+      showSnackbar('Cliente excluído com sucesso', 'success');
+      fetchClients();
+      handleCloseDeleteDialog();
+    } catch (error) {
+      console.error('Erro ao excluir cliente:', error);
+      showSnackbar('Erro ao excluir cliente', 'error');
+    }
+  };
+
   const showSnackbar = (message: string, severity: 'success' | 'error') => {
     setSnackbar({ open: true, message, severity });
   };
@@ -134,12 +168,10 @@ export default function Clients() {
     (client.phone && client.phone.includes(searchTerm))
   );
 
-  // Phone mask function
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    let value = e.target.value.replace(/\D/g, '');
     
     if (value.length <= 11) {
-      // Format as (XX) X XXXX-XXXX
       if (value.length > 0) {
         value = value.replace(/^(\d{2})(\d)/g, '($1) $2');
       }
@@ -233,6 +265,13 @@ export default function Clients() {
                       >
                         <EditIcon />
                       </IconButton>
+                      <IconButton 
+                        color="error" 
+                        onClick={() => handleOpenDeleteDialog(client)}
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))
@@ -291,8 +330,27 @@ export default function Clients() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Dialog para confirmação de exclusão */}
+      <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
+        <DialogTitle>Confirmar Exclusão</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Tem certeza que deseja excluir o cliente "{clientToDelete?.name}"? Essa ação não pode ser desfeita.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancelar</Button>
+          <Button 
+            onClick={handleDeleteClient} 
+            variant="contained" 
+            color="error"
+          >
+            Excluir
+          </Button>
+        </DialogActions>
+      </Dialog>
       
-      {/* Snackbar para feedback */}
       <Snackbar 
         open={snackbar.open} 
         autoHideDuration={6000} 
